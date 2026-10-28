@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -158,6 +159,9 @@ func TestDriverContract(t *testing.T) {
 }
 
 func TestLocalPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix permission bits")
+	}
 	dir := t.TempDir()
 	if err := NewLocal(dir).Save(rel("media", 1, release.StatusDeployed)); err != nil {
 		t.Fatal(err)

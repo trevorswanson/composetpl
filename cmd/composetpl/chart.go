@@ -1,8 +1,8 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
-	"io"
 
 	"github.com/spf13/cobra"
 
@@ -42,20 +42,15 @@ func newShowCmd(g *globalFlags) *cobra.Command {
 	}
 	sections := []struct {
 		use, short string
-		show       func(w io.Writer, c *chart.Chart)
+		// parts are printed separated by "---" lines; empty parts are skipped.
+		parts func(c *chart.Chart) [][]byte
 	}{
-		{"chart", "Show Chart.yaml", func(w io.Writer, c *chart.Chart) { w.Write(c.Raw["Chart.yaml"]) }},
-		{"values", "Show values.yaml", func(w io.Writer, c *chart.Chart) { w.Write(c.Raw["values.yaml"]) }},
-		{"readme", "Show the README", func(w io.Writer, c *chart.Chart) { w.Write(c.Readme()) }},
-		{"schema", "Show values.schema.json", func(w io.Writer, c *chart.Chart) { w.Write(c.Schema) }},
-		{"all", "Show Chart.yaml, values.yaml, the schema and the README", func(w io.Writer, c *chart.Chart) {
-			w.Write(c.Raw["Chart.yaml"])
-			for _, part := range [][]byte{c.Raw["values.yaml"], c.Schema, c.Readme()} {
-				if len(part) > 0 {
-					fmt.Fprintln(w, "---")
-					w.Write(part)
-				}
-			}
+		{"chart", "Show Chart.yaml", func(c *chart.Chart) [][]byte { return [][]byte{c.Raw["Chart.yaml"]} }},
+		{"values", "Show values.yaml", func(c *chart.Chart) [][]byte { return [][]byte{c.Raw["values.yaml"]} }},
+		{"readme", "Show the README", func(c *chart.Chart) [][]byte { return [][]byte{c.Readme()} }},
+		{"schema", "Show values.schema.json", func(c *chart.Chart) [][]byte { return [][]byte{c.Schema} }},
+		{"all", "Show Chart.yaml, values.yaml, the schema and the README", func(c *chart.Chart) [][]byte {
+			return [][]byte{c.Raw["Chart.yaml"], c.Raw["values.yaml"], c.Schema, c.Readme()}
 		}},
 	}
 	for _, s := range sections {
@@ -69,8 +64,18 @@ func newShowCmd(g *globalFlags) *cobra.Command {
 				if err != nil {
 					return err
 				}
-				s.show(cmd.OutOrStdout(), c)
-				return nil
+				var out bytes.Buffer
+				for _, part := range s.parts(c) {
+					if len(part) == 0 {
+						continue
+					}
+					if out.Len() > 0 {
+						out.WriteString("---\n")
+					}
+					out.Write(part)
+				}
+				_, err = cmd.OutOrStdout().Write(out.Bytes())
+				return err
 			},
 		})
 	}
