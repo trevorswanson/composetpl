@@ -163,14 +163,16 @@ func (f *valueFlags) register(fs *pflag.FlagSet) {
 // renderFlags control template rendering.
 type renderFlags struct {
 	valueFlags
-	strict       bool
-	noEnv        bool
-	debug        bool
-	chartVersion string
+	strict        bool
+	noEnv         bool
+	debug         bool
+	chartVersion  string
+	subchartNotes bool
 }
 
 func (f *renderFlags) register(fs *pflag.FlagSet) {
 	f.valueFlags.register(fs)
+	fs.BoolVar(&f.subchartNotes, "render-subchart-notes", false, "also render the NOTES.txt of subcharts")
 	fs.StringVar(&f.chartVersion, "version", "", "chart version constraint for oci:// charts, e.g. ^1.2.0 (default: latest)")
 	fs.BoolVar(&f.strict, "strict", false, "fail on references to missing values")
 	fs.BoolVar(&f.noEnv, "no-env", false, "disable the env and expandenv template functions")

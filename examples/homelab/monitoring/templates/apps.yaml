@@ -1,0 +1,6 @@
+services:
+{{- range $name, $app := .Values.apps }}
+{{- if $app.enabled }}
+  {{- include "common.service" (dict "name" $name "app" $app "root" $) | nindent 2 }}
+{{- end }}
+{{- end }}

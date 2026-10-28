@@ -21,6 +21,10 @@ type Fake struct {
 	FailUp string
 	// FailRun makes Run fail for this service.
 	FailRun string
+	// FailRunTimes, when > 0, limits FailRun to that many failures (0 = always fail).
+	FailRunTimes int
+	// RunDelay makes Run block until its context is done (for timeout tests).
+	RunDelay bool
 	// RunOutput is written to RunOptions.Output by Run.
 	RunOutput string
 	// Objects are returned by Inspect, keyed "kind/name".
@@ -71,13 +75,27 @@ func (f *Fake) Down(_ context.Context, p compose.Project, o compose.DownOptions)
 	return nil
 }
 
-func (f *Fake) Run(_ context.Context, p compose.Project, o compose.RunOptions) error {
+func (f *Fake) Run(ctx context.Context, p compose.Project, o compose.RunOptions) error {
 	f.record(fmt.Sprintf("run %s %s name=%s nodeps=%v", p.Name, o.Service, o.ContainerName, o.NoDeps))
 	if o.Output != nil && f.RunOutput != "" {
 		_, _ = o.Output.Write([]byte(f.RunOutput))
 	}
+	if f.RunDelay {
+		<-ctx.Done()
+		return ctx.Err()
+	}
 	if f.FailRun != "" && o.Service == f.FailRun {
-		return fmt.Errorf("service %s exited with code 1", o.Service)
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		switch {
+		case f.FailRunTimes == 0: // always fail
+			return fmt.Errorf("service %s exited with code 1", o.Service)
+		case f.FailRunTimes > 0:
+			if f.FailRunTimes--; f.FailRunTimes == 0 {
+				f.FailRunTimes = -1 // failures used up
+			}
+			return fmt.Errorf("service %s exited with code 1", o.Service)
+		}
 	}
 	return nil
 }

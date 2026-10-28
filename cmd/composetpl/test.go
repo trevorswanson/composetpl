@@ -50,8 +50,8 @@ one at a time with docker compose run, like helm test. Stops at the first failur
 					if !r.Passed {
 						phase = "Failed"
 					}
-					fmt.Fprintf(w, "TEST SUITE:     %s\nLast Started:   %s\nLast Completed: %s\nPhase:          %s\n",
-						r.Name, formatTime(r.Started), formatTime(r.Finished), phase)
+					fmt.Fprintf(w, "TEST SUITE:     %s\nLast Started:   %s\nLast Completed: %s\nAttempts:       %d\nPhase:          %s\n",
+						r.Name, formatTime(r.Started), formatTime(r.Finished), r.Attempts, phase)
 					if logs && r.Logs != "" {
 						fmt.Fprintf(w, "LOGS:\n%s\n", strings.TrimRight(r.Logs, "\n"))
 					}

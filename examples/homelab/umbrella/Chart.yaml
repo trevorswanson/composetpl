@@ -1,0 +1,11 @@
+apiVersion: v2
+name: homelab
+description: The whole homelab as one release
+version: 0.1.0
+dependencies:
+  - name: media
+    repository: file://../stack
+    condition: media.enabled
+  - name: monitoring
+    repository: file://../monitoring
+    condition: monitoring.enabled

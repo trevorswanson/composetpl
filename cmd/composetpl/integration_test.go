@@ -42,6 +42,14 @@ services:
     image: busybox:1.37
     command: ["true"]
     x-composetpl: {hook: [pre-upgrade, pre-rollback], delete-policy: hook-succeeded}
+  # Fails on its first run and succeeds on the retry, via a marker in a volume.
+  flaky:
+    image: busybox:1.37
+    command: ["sh", "-c", "[ -f /state/ran ] && exit 0; touch /state/ran; exit 1"]
+    volumes: [flaky-state:/state]
+    x-composetpl: {hook: pre-upgrade, retries: 2, backoff: 1s}
+volumes:
+  flaky-state: {}
 -- templates/NOTES.txt --
 whoami says {{ .Values.message }}
 `
@@ -93,7 +101,9 @@ func TestIntegrationLifecycle(t *testing.T) {
 
 			expect(t, mustRun(t, "diff", "upgrade", name, chartDir, "--set", "message=bonjour"),
 				"services/whoami, changed:", `-command: ["--name", "hello"]`, `+command: ["--name", "bonjour"]`)
-			mustRun(t, "upgrade", name, chartDir, "--set", "message=bonjour", "--wait")
+			// The flaky pre-upgrade hook fails once and passes on its retry.
+			expect(t, mustRun(t, "upgrade", name, chartDir, "--set", "message=bonjour", "--wait"),
+				"Hook flaky failed (attempt 1/3)", "Running pre-upgrade hook flaky (attempt 2/3)")
 			expect(t, mustRun(t, "test", name), "Succeeded")
 			expect(t, mustRun(t, "list"), name, "running(1)")
 			expect(t, mustRun(t, "history", name), "superseded", "deployed")
@@ -146,4 +156,52 @@ func TestIntegrationRegistry(t *testing.T) {
 		t.Errorf("registry chart renders differently:\n%s", got)
 	}
 	_ = os.Remove(filepath.Join(dist, "whoami-1.0.0.tgz"))
+}
+
+const integrationSubchart = `-- Chart.yaml --
+name: svc
+version: 1.0.0
+-- values.yaml --
+message: hi
+-- templates/service.yaml --
+services:
+  {{ .Chart.Name }}:
+    image: traefik/whoami:v1.10
+    command: ["--name", "{{ .Values.message }}-{{ .Values.global.site }}"]
+`
+
+const integrationUmbrella = `-- Chart.yaml --
+name: site
+version: 1.0.0
+dependencies:
+  - {name: svc, alias: one, repository: "file://../svc"}
+  - {name: svc, alias: two, repository: "file://../svc", condition: two.enabled}
+-- values.yaml --
+global: {site: lab}
+two: {enabled: true, message: second}
+`
+
+func TestIntegrationUmbrella(t *testing.T) {
+	requireCompose(t)
+	root := t.TempDir()
+	writeTxtar(t, filepath.Join(root, "svc"), integrationSubchart)
+	writeTxtar(t, filepath.Join(root, "site"), integrationUmbrella)
+	name := fmt.Sprintf("ctpl-it-umbrella-%d", rand.Intn(1e6))
+	t.Setenv("COMPOSETPL_STORAGE", "local")
+	t.Setenv("COMPOSETPL_STATE_DIR", t.TempDir())
+	t.Cleanup(func() { _ = exec.Command("docker", "compose", "-p", name, "down", "--remove-orphans").Run() })
+
+	mustRun(t, "install", name, filepath.Join(root, "site"), "--wait")
+	expect(t, mustRun(t, "status", name), name+"-one-1", name+"-two-1")
+	// Each alias gets its own values (default vs parent override) and the parent's global.
+	expect(t, mustRun(t, "get", "manifest", name), `command: ["--name", "hi-lab"]`, `command: ["--name", "second-lab"]`)
+
+	// Disabling a subchart removes its services from the running project.
+	mustRun(t, "upgrade", name, filepath.Join(root, "site"), "--set", "two.enabled=false", "--wait")
+	out := mustRun(t, "status", name)
+	expect(t, out, name+"-one-1")
+	if strings.Contains(out, name+"-two-1") {
+		t.Errorf("disabled subchart still running:\n%s", out)
+	}
+	mustRun(t, "uninstall", name)
 }

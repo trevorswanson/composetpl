@@ -1,0 +1,170 @@
+name: homelab
+services:
+  homepage:
+    image: ghcr.io/gethomepage/homepage:latest
+    container_name: homepage
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+      HOMEPAGE_ALLOWED_HOSTS: "homepage.home.example.com"
+    volumes:
+      - "/opt/appdata/homepage:/app/config"
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.homepage.rule: "Host(`homepage.home.example.com`)"
+      traefik.http.routers.homepage.entrypoints: websecure
+      traefik.http.routers.homepage.tls.certresolver: letsencrypt
+      traefik.http.services.homepage.loadbalancer.server.port: "3000"
+    depends_on:
+      - traefik
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+      PUID: "1000"
+      PGID: "1000"
+    volumes:
+      - "/opt/appdata/jellyfin:/config"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.jellyfin.rule: "Host(`jellyfin.home.example.com`)"
+      traefik.http.routers.jellyfin.entrypoints: websecure
+      traefik.http.routers.jellyfin.tls.certresolver: letsencrypt
+      traefik.http.services.jellyfin.loadbalancer.server.port: "8096"
+  plex:
+    image: lscr.io/linuxserver/plex:latest
+    container_name: plex
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: "America/Chicago"
+      PUID: "1000"
+      PGID: "1000"
+      VERSION: "docker"
+    volumes:
+      - "/opt/appdata/plex:/config"
+      - "/mnt/media:/media"
+    labels:
+      homepage.group: "Media"
+      homepage.name: "Plex"
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+      PUID: "1000"
+      PGID: "1000"
+    volumes:
+      - "/opt/appdata/radarr:/config"
+      - "/mnt/media/movies:/movies"
+      - "/mnt/media/downloads:/downloads"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.radarr.rule: "Host(`radarr.home.example.com`)"
+      traefik.http.routers.radarr.entrypoints: websecure
+      traefik.http.routers.radarr.tls.certresolver: letsencrypt
+      traefik.http.services.radarr.loadbalancer.server.port: "7878"
+      homepage.group: "Arr"
+      homepage.name: "Radarr"
+      homepage.href: "https://radarr.home.example.com"
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+      PUID: "1000"
+      PGID: "1000"
+    volumes:
+      - "/opt/appdata/sonarr:/config"
+      - "/mnt/media/tv:/tv"
+      - "/mnt/media/downloads:/downloads"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.sonarr.rule: "Host(`sonarr.home.example.com`)"
+      traefik.http.routers.sonarr.entrypoints: websecure
+      traefik.http.routers.sonarr.tls.certresolver: letsencrypt
+      traefik.http.services.sonarr.loadbalancer.server.port: "8989"
+      homepage.group: "Arr"
+      homepage.name: "Sonarr"
+      homepage.href: "https://sonarr.home.example.com"
+  traefik:
+    image: traefik:v3.5
+    container_name: traefik
+    restart: unless-stopped
+    command:
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.web.http.redirections.entrypoint.to=websecure"
+      - "--entrypoints.websecure.address=:443"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@example.com"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.letsencrypt.acme.tlschallenge=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - "/opt/appdata/traefik/letsencrypt:/letsencrypt"
+    networks:
+      - proxy
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: dozzle
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.dozzle.rule: "Host(`dozzle.home.example.com`)"
+      traefik.http.routers.dozzle.entrypoints: websecure
+      traefik.http.routers.dozzle.tls.certresolver: letsencrypt
+      traefik.http.services.dozzle.loadbalancer.server.port: "8080"
+      homepage.group: "Monitoring"
+      homepage.name: "Dozzle"
+      homepage.href: "https://dozzle.home.example.com"
+  uptime-kuma:
+    image: louislam/uptime-kuma:1
+    container_name: uptime-kuma
+    restart: unless-stopped
+    environment:
+      TZ: "America/Chicago"
+    volumes:
+      - "/opt/appdata/uptime-kuma:/app/data"
+    networks:
+      - proxy
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: proxy
+      traefik.http.routers.uptime-kuma.rule: "Host(`uptime-kuma.home.example.com`)"
+      traefik.http.routers.uptime-kuma.entrypoints: websecure
+      traefik.http.routers.uptime-kuma.tls.certresolver: letsencrypt
+      traefik.http.services.uptime-kuma.loadbalancer.server.port: "3001"
+      homepage.group: "Monitoring"
+      homepage.name: "Uptime-Kuma"
+      homepage.href: "https://uptime-kuma.home.example.com"
+networks:
+  proxy:
+    name: proxy

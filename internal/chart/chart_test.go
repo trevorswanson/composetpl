@@ -46,7 +46,7 @@ func TestLoad(t *testing.T) {
 	for _, tpl := range c.AllTemplates() {
 		names = append(names, tpl.Name)
 	}
-	want := "lib/templates/_helpers.tpl,app/templates/b.yaml,app/templates/sub/a.yaml"
+	want := "app/charts/lib/templates/_helpers.tpl,app/templates/b.yaml,app/templates/sub/a.yaml"
 	if got := strings.Join(names, ","); got != want {
 		t.Errorf("templates = %s, want %s", got, want)
 	}

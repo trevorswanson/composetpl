@@ -10,6 +10,9 @@
 //	      weight: -5                        # lower runs first (default 0)
 //	      delete-policy: [before-hook-creation, hook-succeeded]
 //	      no-deps: true                     # don't start depends_on services
+//	      retries: 3                        # run again on failure (default 0)
+//	      backoff: 10s                      # first retry delay, doubling, capped at 5m
+//	      timeout: 2m                       # per attempt; overrides --timeout
 //
 // Hook services are removed from the deployed manifest and run to completion with
 // `docker compose run` at their events. Services with hook "test" run on
@@ -61,6 +64,15 @@ var events = map[string]bool{
 }
 
 var policies = map[string]bool{BeforeHookCreation: true, HookSucceeded: true, HookFailed: true}
+
+const (
+	// MaxRetries bounds x-composetpl.retries.
+	MaxRetries = 100
+	// DefaultBackoff is the delay before the first retry, as for Kubernetes Jobs.
+	DefaultBackoff = 10 * time.Second
+	// MaxBackoff caps the doubling retry delay.
+	MaxBackoff = 5 * time.Minute
+)
 
 // Extract removes hook services from a merged manifest and returns them sorted
 // by weight, then name. Services without the extension are left in place.
@@ -143,6 +155,22 @@ func parse(name string, ext *yaml.Node) (*release.Hook, error) {
 				return nil, errf("no-deps must be a boolean")
 			}
 			h.NoDeps = b
+		case "retries":
+			n, err := strconv.Atoi(val.Value)
+			if err != nil || val.Kind != yaml.ScalarNode || n < 0 || n > MaxRetries {
+				return nil, errf("retries must be an integer from 0 to %d", MaxRetries)
+			}
+			h.Retries = n
+		case "backoff", "timeout":
+			d, err := time.ParseDuration(val.Value)
+			if err != nil || val.Kind != yaml.ScalarNode || d <= 0 {
+				return nil, errf("%s must be a positive duration such as 30s or 2m", key)
+			}
+			if key == "backoff" {
+				h.Backoff = d.String()
+			} else {
+				h.Timeout = d.String()
+			}
 		default:
 			return nil, errf("unknown key %q", key)
 		}
@@ -239,8 +267,37 @@ type Runner struct {
 	Output io.Writer
 	// Log receives one line per hook started.
 	Log io.Writer
-	// Timeout bounds each hook; 0 means no limit.
+	// Timeout bounds each attempt unless the hook sets its own; 0 means no limit.
 	Timeout time.Duration
+	// Sleep waits between retries; nil uses a timer that honours ctx.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+func (r *Runner) sleep(ctx context.Context, d time.Duration) error {
+	if r.Sleep != nil {
+		return r.Sleep(ctx, d)
+	}
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
+}
+
+// Backoff returns the delay before retry n (1-based): base doubled n-1 times,
+// capped at MaxBackoff.
+func Backoff(base time.Duration, n int) time.Duration {
+	d := base
+	for i := 1; i < n && d < MaxBackoff; i++ {
+		d *= 2
+	}
+	if d > MaxBackoff {
+		d = MaxBackoff
+	}
+	return d
 }
 
 // Result is the outcome of one hook.
@@ -248,6 +305,8 @@ type Result struct {
 	Name     string
 	Started  time.Time
 	Finished time.Time
+	// Attempts is how many times the hook ran.
+	Attempts int
 	Err      error
 }
 
@@ -273,42 +332,91 @@ func (r *Runner) Run(ctx context.Context, rel *release.Release, event string, on
 	return results, nil
 }
 
-func (r *Runner) runOne(ctx context.Context, rel *release.Release, h *release.Hook, event string) Result {
-	res := Result{Name: h.Name, Started: time.Now()}
+func (r *Runner) runOne(ctx context.Context, rel *release.Release, h *release.Hook, event string) (res Result) {
+	res = Result{Name: h.Name, Started: time.Now()}
 	defer func() { res.Finished = time.Now() }()
 	container := ContainerName(rel, h)
-	if has(h.DeletePolicies, BeforeHookCreation) {
-		if res.Err = r.Compose.RemoveContainer(ctx, container); res.Err != nil {
-			return res
-		}
-	}
 	manifest, err := manifestWith(rel.Manifest, h)
 	if err != nil {
 		res.Err = err
 		return res
 	}
-	if r.Log != nil {
-		fmt.Fprintf(r.Log, "Running %s hook %s\n", event, h.Name)
+	timeout := r.Timeout
+	if h.Timeout != "" {
+		if timeout, err = time.ParseDuration(h.Timeout); err != nil {
+			res.Err = err
+			return res
+		}
 	}
-	runCtx := ctx
-	if r.Timeout > 0 {
-		var cancel context.CancelFunc
-		runCtx, cancel = context.WithTimeout(ctx, r.Timeout)
-		defer cancel()
+	backoff := DefaultBackoff
+	if h.Backoff != "" {
+		if backoff, err = time.ParseDuration(h.Backoff); err != nil {
+			res.Err = err
+			return res
+		}
 	}
 	out := r.Output
 	if out == nil {
 		out = io.Discard
 	}
-	res.Err = r.Compose.Run(runCtx, compose.Project{Name: rel.Name, Manifest: manifest, Dir: rel.ProjectDir},
-		compose.RunOptions{Service: h.Name, ContainerName: container, NoDeps: h.NoDeps, Output: out})
+	project := compose.Project{Name: rel.Name, Manifest: manifest, Dir: rel.ProjectDir}
 
+	for {
+		res.Attempts++
+		// `run --name` fails if the container exists, so a retry always clears it.
+		if res.Attempts > 1 || has(h.DeletePolicies, BeforeHookCreation) {
+			if res.Err = r.Compose.RemoveContainer(ctx, container); res.Err != nil {
+				return res
+			}
+		}
+		if r.Log != nil {
+			if res.Attempts == 1 {
+				fmt.Fprintf(r.Log, "Running %s hook %s\n", event, h.Name)
+			} else {
+				fmt.Fprintf(r.Log, "Running %s hook %s (attempt %d/%d)\n", event, h.Name, res.Attempts, h.Retries+1)
+			}
+		}
+		res.Err = r.runAttempt(ctx, project, h, container, timeout, out)
+		if res.Err == nil || res.Attempts > h.Retries {
+			break
+		}
+		delay := Backoff(backoff, res.Attempts)
+		if r.Log != nil {
+			fmt.Fprintf(r.Log, "Hook %s failed (attempt %d/%d): %v; retrying in %s\n",
+				h.Name, res.Attempts, h.Retries+1, firstLine(res.Err.Error()), delay)
+		}
+		if err := r.sleep(ctx, delay); err != nil {
+			res.Err = fmt.Errorf("%w (gave up waiting to retry: %v)", res.Err, err)
+			break
+		}
+	}
+
+	// Delete policies apply to the final outcome.
 	if (res.Err == nil && has(h.DeletePolicies, HookSucceeded)) || (res.Err != nil && has(h.DeletePolicies, HookFailed)) {
 		if err := r.Compose.RemoveContainer(ctx, container); err != nil && res.Err == nil {
 			res.Err = err
 		}
 	}
+	if res.Err != nil && res.Attempts > 1 {
+		res.Err = fmt.Errorf("after %d attempts: %w", res.Attempts, res.Err)
+	}
 	return res
+}
+
+func (r *Runner) runAttempt(ctx context.Context, p compose.Project, h *release.Hook, container string, timeout time.Duration, out io.Writer) error {
+	if timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+		defer cancel()
+	}
+	return r.Compose.Run(ctx, p, compose.RunOptions{Service: h.Name, ContainerName: container, NoDeps: h.NoDeps, Output: out})
+}
+
+func firstLine(s string) string {
+	if i := strings.IndexByte(s, '\n'); i >= 0 {
+		return s[:i]
+	}
+	return s
 }
 
 // For returns the hooks of rel registered for event.

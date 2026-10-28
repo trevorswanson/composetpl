@@ -10,12 +10,16 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"time"
 
 	"sigs.k8s.io/yaml"
 )
+
+// drivePath matches Windows drive-qualified paths such as C:/x or C:x.
+var drivePath = regexp.MustCompile(`^[A-Za-z]:`)
 
 // MaxArchiveSize bounds the decompressed size of a chart archive.
 const MaxArchiveSize = 64 << 20
@@ -45,10 +49,13 @@ func ReadArchive(data []byte) (map[string][]byte, error) {
 		if h.Typeflag != tar.TypeReg {
 			continue
 		}
-		name := path.Clean(strings.TrimPrefix(h.Name, "./"))
-		if path.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") {
-			return nil, fmt.Errorf("chart archive entry %q escapes the chart", h.Name)
+		// Treat "\" as a separator, as Helm does, so a Windows-style entry such as
+		// chart/..\..\evil can't hide a parent reference.
+		name := strings.ReplaceAll(h.Name, "\\", "/")
+		if strings.Contains(name, "..") || path.IsAbs(name) || drivePath.MatchString(name) {
+			return nil, fmt.Errorf("chart archive entry %q escapes the chart (names may not contain \"..\")", h.Name)
 		}
+		name = path.Clean(strings.TrimPrefix(name, "./"))
 		parts := strings.SplitN(name, "/", 2)
 		if len(parts) != 2 {
 			return nil, fmt.Errorf("chart archive entry %q is not inside a chart directory", h.Name)
