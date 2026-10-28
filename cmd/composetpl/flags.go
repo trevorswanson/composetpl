@@ -16,12 +16,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"github.com/trevorswanson/composetpl/internal/action"
-	"github.com/trevorswanson/composetpl/internal/compose"
-	"github.com/trevorswanson/composetpl/internal/output"
-	"github.com/trevorswanson/composetpl/internal/registry"
-	"github.com/trevorswanson/composetpl/internal/storage"
-	"github.com/trevorswanson/composetpl/internal/values"
+	"github.com/trevorswanson/composetpl/pkg/action"
+	"github.com/trevorswanson/composetpl/pkg/compose"
+	"github.com/trevorswanson/composetpl/pkg/output"
+	"github.com/trevorswanson/composetpl/pkg/registry"
+	"github.com/trevorswanson/composetpl/pkg/storage"
+	"github.com/trevorswanson/composetpl/pkg/values"
 )
 
 // globalFlags select the Docker engine and release storage.
@@ -199,11 +199,16 @@ type deployFlags struct {
 }
 
 func (f *deployFlags) register(fs *pflag.FlagSet) {
+	f.registerUp(fs)
+	fs.BoolVar(&f.NoHooks, "no-hooks", false, "skip lifecycle hooks")
+}
+
+// registerUp registers the docker compose up flags only (repair runs no hooks).
+func (f *deployFlags) registerUp(fs *pflag.FlagSet) {
 	fs.BoolVar(&f.Wait, "wait", false, "wait until services are running and healthy (docker compose up --wait)")
 	fs.DurationVar(&f.Timeout, "timeout", 5*time.Minute, "how long --wait waits")
 	fs.StringVar(&f.Pull, "pull", "", "image pull policy: always, missing or never (default: compose's)")
 	fs.BoolVar(&f.ForceRecreate, "force", false, "recreate containers even if their configuration is unchanged")
-	fs.BoolVar(&f.NoHooks, "no-hooks", false, "skip lifecycle hooks")
 }
 
 func ctx(cmd *cobra.Command) context.Context {

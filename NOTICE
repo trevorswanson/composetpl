@@ -3,8 +3,8 @@ Copyright 2026 Trevor Swanson
 
 This product includes software adapted from Helm (https://helm.sh),
 Copyright The Helm Authors, licensed under the Apache License, Version 2.0.
-The adapted portions are in internal/engine/engine.go and
-internal/engine/funcs.go and have been modified for this project.
+The adapted portions are in pkg/engine/engine.go and
+pkg/engine/funcs.go and have been modified for this project.
 
 This product includes the YAML libraries go.yaml.in/yaml/v2,
 go.yaml.in/yaml/v3 and gopkg.in/yaml.v3, whose NOTICE reads:
