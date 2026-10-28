@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["global", "apps"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "required": ["tz", "domain", "network", "configRoot"],
+      "properties": {
+        "tz": { "type": "string", "minLength": 1 },
+        "puid": { "type": "integer", "minimum": 0 },
+        "pgid": { "type": "integer", "minimum": 0 },
+        "domain": { "type": "string", "pattern": "^[a-z0-9.-]+$" },
+        "network": { "type": "string", "minLength": 1 },
+        "restart": { "enum": ["no", "always", "on-failure", "unless-stopped"] }
+      }
+    },
+    "apps": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": ["image"],
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "image": { "type": "string", "minLength": 1 },
+          "tag": { "type": "string" },
+          "ports": { "type": "array", "items": { "type": "string" } },
+          "volumes": { "type": "array", "items": { "type": "string" } },
+          "env": { "type": "object" },
+          "ingress": {
+            "type": "object",
+            "required": ["port"],
+            "properties": {
+              "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+              "host": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

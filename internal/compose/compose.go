@@ -82,7 +82,14 @@ type Runner interface {
 	RemoveContainer(ctx context.Context, name string) error
 	PS(ctx context.Context, project string) ([]Container, error)
 	Ls(ctx context.Context) ([]ProjectStatus, error)
+	// ServerVersion is the Docker engine version.
+	ServerVersion(ctx context.Context) (string, error)
+	// Inspect returns `docker <kind> inspect <name>`, or an empty map if it does not exist.
+	Inspect(ctx context.Context, kind, name string) (map[string]interface{}, error)
 }
+
+// LookupKinds are the object kinds Inspect (and the lookup template function) supports.
+var LookupKinds = map[string]bool{"container": true, "image": true, "network": true, "volume": true}
 
 // ExecFunc runs the docker binary with args. It exists so tests can capture invocations.
 type ExecFunc func(ctx context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error
@@ -238,6 +245,38 @@ func (c *CLI) Ls(ctx context.Context) ([]ProjectStatus, error) {
 		return nil, fmt.Errorf("parsing docker compose ls output: %w", err)
 	}
 	return rows, nil
+}
+
+func (c *CLI) ServerVersion(ctx context.Context) (string, error) {
+	var out, stderr bytes.Buffer
+	args := append(append([]string{}, c.Global...), "version", "--format", "{{.Server.Version}}")
+	if err := c.Exec(ctx, args, nil, &out, &stderr); err != nil {
+		return "", fmt.Errorf("docker version: %w: %s", err, lastLines(stderr.String(), 3))
+	}
+	return strings.TrimSpace(out.String()), nil
+}
+
+func (c *CLI) Inspect(ctx context.Context, kind, name string) (map[string]interface{}, error) {
+	if !LookupKinds[kind] {
+		return nil, fmt.Errorf("lookup: unsupported kind %q (want container, image, network or volume)", kind)
+	}
+	var out, stderr bytes.Buffer
+	args := append(append([]string{}, c.Global...), kind, "inspect", "--", name)
+	if err := c.Exec(ctx, args, nil, &out, &stderr); err != nil {
+		msg := strings.ToLower(stderr.String())
+		if strings.Contains(msg, "no such") || strings.Contains(msg, "not found") {
+			return map[string]interface{}{}, nil
+		}
+		return nil, fmt.Errorf("docker %s inspect %s: %w: %s", kind, name, err, lastLines(stderr.String(), 3))
+	}
+	var rows []map[string]interface{}
+	if err := json.Unmarshal(out.Bytes(), &rows); err != nil {
+		return nil, fmt.Errorf("parsing docker %s inspect output: %w", kind, err)
+	}
+	if len(rows) == 0 {
+		return map[string]interface{}{}, nil
+	}
+	return rows[0], nil
 }
 
 // ParsePS accepts both output formats of `docker compose ps --format json`:

@@ -24,6 +24,11 @@ type Options struct {
 	Strict bool
 	// NoEnv removes the env and expandenv functions, as Helm does.
 	NoEnv bool
+	// Capabilities populates .Capabilities.
+	Capabilities map[string]interface{}
+	// Lookup implements the lookup function. When nil, lookup returns an empty
+	// map, as Helm's does without a cluster (template, lint, --dry-run).
+	Lookup func(kind, name string) (map[string]interface{}, error)
 }
 
 // Rendered is the output of one non-partial template.
@@ -79,10 +84,11 @@ func Render(c *chart.Chart, vals map[string]interface{}, release map[string]inte
 			continue
 		}
 		data := map[string]interface{}{
-			"Values":  vals,
-			"Chart":   c.Metadata,
-			"Release": release,
-			"Files":   files,
+			"Values":       vals,
+			"Chart":        c.Metadata,
+			"Release":      release,
+			"Files":        files,
+			"Capabilities": opts.Capabilities,
 			"Template": map[string]interface{}{
 				"Name":     tpl.Name,
 				"BasePath": c.Metadata.Name + "/templates",
@@ -119,6 +125,12 @@ func initFuncMap(t *template.Template, opts Options) {
 	}
 	f["fail"] = func(msg string) (string, error) {
 		return "", errors.New(warnWrap(msg))
+	}
+	f["lookup"] = func(kind, name string) (map[string]interface{}, error) {
+		if opts.Lookup == nil {
+			return map[string]interface{}{}, nil
+		}
+		return opts.Lookup(kind, name)
 	}
 	t.Funcs(f)
 }

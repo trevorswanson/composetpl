@@ -3,7 +3,6 @@ package main
 import (
 	"fmt"
 	"io"
-	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -130,8 +129,8 @@ recovers a release stuck in a pending state.`,
 			a := action.NewRollback(cfg)
 			a.DeployOptions, a.HistoryMax, a.DryRun = df.DeployOptions, historyMax, dryRun
 			if len(args) == 2 {
-				if a.Version, err = strconv.Atoi(args[1]); err != nil || a.Version < 1 {
-					return fmt.Errorf("invalid revision %q", args[1])
+				if a.Version, err = parseRevision(args[1]); err != nil {
+					return err
 				}
 			}
 			rel, err := a.Run(ctx(cmd), args[0])

@@ -79,3 +79,40 @@ func TestLoadErrors(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateValues(t *testing.T) {
+	c := &Chart{Metadata: &Metadata{Name: "media"}, Schema: []byte(`{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "required": ["global"],
+  "properties": {
+    "global": {
+      "type": "object",
+      "required": ["domain"],
+      "properties": {"domain": {"type": "string", "minLength": 1}, "puid": {"type": "integer"}}
+    }
+  }
+}`)}
+	ok := map[string]interface{}{"global": map[string]interface{}{"domain": "home.lan", "puid": int64(1000)}}
+	if err := c.ValidateValues(ok); err != nil {
+		t.Errorf("valid values rejected: %v", err)
+	}
+	bad := map[string]interface{}{"global": map[string]interface{}{"domain": "", "puid": "abc"}}
+	err := c.ValidateValues(bad)
+	if err == nil {
+		t.Fatal("expected a schema error")
+	}
+	for _, w := range []string{"schema in chart media", "/global/domain", "/global/puid"} {
+		if !strings.Contains(err.Error(), w) {
+			t.Errorf("error missing %q:\n%v", w, err)
+		}
+	}
+
+	c.Schema = []byte(`{"$ref": "file:///etc/passwd"}`)
+	if err := c.ValidateValues(ok); err == nil || !strings.Contains(err.Error(), "external $ref") {
+		t.Errorf("external $ref should be refused: %v", err)
+	}
+	if err := (&Chart{Metadata: &Metadata{Name: "x"}}).ValidateValues(bad); err != nil {
+		t.Errorf("no schema should pass: %v", err)
+	}
+}

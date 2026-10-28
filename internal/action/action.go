@@ -28,6 +28,41 @@ type Configuration struct {
 	// Log receives warnings and progress meant for humans.
 	Log io.Writer
 	Now func() time.Time
+
+	caps map[string]interface{}
+}
+
+// capabilities queries the engine once for .Capabilities.
+func (c *Configuration) capabilities(ctx context.Context) (map[string]interface{}, error) {
+	if c.caps != nil {
+		return c.caps, nil
+	}
+	cv, err := c.Compose.Version(ctx)
+	if err != nil {
+		return nil, err
+	}
+	dv, err := c.Compose.ServerVersion(ctx)
+	if err != nil {
+		return nil, err
+	}
+	c.caps = map[string]interface{}{"ComposeVersion": cv, "DockerVersion": dv}
+	return c.caps, nil
+}
+
+// liveRenderOptions fills in engine-backed .Capabilities and, unless dryRun,
+// a lookup function that inspects the engine.
+func (c *Configuration) liveRenderOptions(ctx context.Context, o RenderOptions, dryRun bool) (RenderOptions, error) {
+	caps, err := c.capabilities(ctx)
+	if err != nil {
+		return o, err
+	}
+	o.Capabilities = caps
+	if !dryRun {
+		o.Lookup = func(kind, name string) (map[string]interface{}, error) {
+			return c.Compose.Inspect(ctx, kind, name)
+		}
+	}
+	return o, nil
 }
 
 func (c *Configuration) now() time.Time {
@@ -58,6 +93,19 @@ type RenderOptions struct {
 	NoEnv    bool
 	// ShowOnly limits output to these templates, e.g. "templates/apps.yaml".
 	ShowOnly []string
+	// Capabilities populates .Capabilities; nil uses DefaultCapabilities.
+	Capabilities map[string]interface{}
+	// Lookup backs the lookup function; nil makes lookup return empty maps.
+	Lookup func(kind, name string) (map[string]interface{}, error)
+}
+
+// DefaultDockerVersion is .Capabilities.DockerVersion when no engine is queried
+// (template, lint), like Helm's default KubeVersion.
+const DefaultDockerVersion = "25.0.0"
+
+// DefaultCapabilities returns .Capabilities for rendering without an engine.
+func DefaultCapabilities() map[string]interface{} {
+	return map[string]interface{}{"ComposeVersion": compose.MinVersion, "DockerVersion": DefaultDockerVersion}
 }
 
 // Rendered is a rendered chart, before its templates are merged.
@@ -80,6 +128,13 @@ func Render(o RenderOptions) (*Rendered, error) {
 		defaults = o.Defaults
 	}
 	vals := values.Coalesce(o.UserValues, defaults)
+	if err := c.ValidateValues(vals); err != nil {
+		return nil, err
+	}
+	caps := o.Capabilities
+	if caps == nil {
+		caps = DefaultCapabilities()
+	}
 
 	name := o.ReleaseName
 	if name == "" {
@@ -93,7 +148,9 @@ func Render(o RenderOptions) (*Rendered, error) {
 		"Name": name, "Revision": revision, "IsInstall": !o.IsUpgrade, "IsUpgrade": o.IsUpgrade,
 		"Service": "composetpl",
 	}
-	res, err := engine.Render(c, vals, rel, engine.Options{Strict: o.Strict, NoEnv: o.NoEnv})
+	res, err := engine.Render(c, vals, rel, engine.Options{
+		Strict: o.Strict, NoEnv: o.NoEnv, Capabilities: caps, Lookup: o.Lookup,
+	})
 	if err != nil {
 		return nil, err
 	}

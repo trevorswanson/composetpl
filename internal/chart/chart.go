@@ -47,9 +47,11 @@ func (t Template) IsPartial() bool {
 
 // Chart is a loaded chart directory.
 type Chart struct {
-	Metadata  *Metadata
-	Dir       string
-	Values    map[string]interface{}
+	Metadata *Metadata
+	Dir      string
+	Values   map[string]interface{}
+	// Schema is the chart's values.schema.json, if any.
+	Schema    []byte
 	Templates []Template
 	// Files holds every non-template file (relative slash path -> contents), for .Files.
 	Files map[string][]byte
@@ -125,6 +127,8 @@ func load(dir string, stack []string) (*Chart, error) {
 		case strings.HasPrefix(rel, "templates/"):
 			c.Templates = append(c.Templates, Template{Name: md.Name + "/" + rel, Data: data})
 		case rel == "Chart.yaml" || rel == "values.yaml":
+		case rel == "values.schema.json":
+			c.Schema = data
 		default:
 			c.Files[rel] = data
 		}

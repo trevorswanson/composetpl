@@ -15,14 +15,19 @@ import (
 // templateFlags are shared by template and lint.
 type templateFlags struct {
 	renderFlags
-	name     string
-	showOnly []string
+	name           string
+	showOnly       []string
+	composeVersion string
+	dockerVersion  string
 }
 
 func (f *templateFlags) register(cmd *cobra.Command) {
 	f.renderFlags.register(cmd.Flags())
 	cmd.Flags().StringVar(&f.name, "name", "", "release name (.Release.Name and the compose project name; default: chart name)")
 	cmd.Flags().StringArrayVarP(&f.showOnly, "show-only", "s", nil, "only render the given template, e.g. templates/apps.yaml (repeatable)")
+	caps := action.DefaultCapabilities()
+	cmd.Flags().StringVar(&f.composeVersion, "compose-version", caps["ComposeVersion"].(string), "compose version for .Capabilities.ComposeVersion")
+	cmd.Flags().StringVar(&f.dockerVersion, "docker-version", caps["DockerVersion"].(string), "engine version for .Capabilities.DockerVersion")
 }
 
 func (f *templateFlags) render(chartPath string) (*action.Rendered, error) {
@@ -33,6 +38,7 @@ func (f *templateFlags) render(chartPath string) (*action.Rendered, error) {
 	return action.Render(action.RenderOptions{
 		ChartPath: chartPath, ReleaseName: f.name, UserValues: user,
 		Strict: f.strict, NoEnv: f.noEnv, ShowOnly: f.showOnly,
+		Capabilities: map[string]interface{}{"ComposeVersion": f.composeVersion, "DockerVersion": f.dockerVersion},
 	})
 }
 

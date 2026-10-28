@@ -59,10 +59,14 @@ func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues ma
 	}
 
 	config, defaults := u.resolveValues(current, userValues)
-	rendered, err := Render(RenderOptions{
+	ro, err := u.cfg.liveRenderOptions(ctx, RenderOptions{
 		ChartPath: chartPath, ReleaseName: name, Revision: latest.Revision + 1, IsUpgrade: true,
 		UserValues: config, Defaults: defaults, Strict: u.Strict, NoEnv: u.NoEnv,
-	})
+	}, u.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	rendered, err := Render(ro)
 	if err != nil {
 		return nil, err
 	}

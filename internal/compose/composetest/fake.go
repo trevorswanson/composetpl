@@ -23,10 +23,14 @@ type Fake struct {
 	FailRun string
 	// RunOutput is written to RunOptions.Output by Run.
 	RunOutput string
+	// Objects are returned by Inspect, keyed "kind/name".
+	Objects map[string]map[string]interface{}
 }
 
 // New returns an empty Fake.
-func New() *Fake { return &Fake{Running: map[string]string{}} }
+func New() *Fake {
+	return &Fake{Running: map[string]string{}, Objects: map[string]map[string]interface{}{}}
+}
 
 func (f *Fake) record(s string) {
 	f.mu.Lock()
@@ -101,4 +105,17 @@ func (f *Fake) Ls(context.Context) ([]compose.ProjectStatus, error) {
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
+}
+
+func (f *Fake) ServerVersion(context.Context) (string, error) { return "29.0.0", nil }
+
+func (f *Fake) Inspect(_ context.Context, kind, name string) (map[string]interface{}, error) {
+	f.record("inspect " + kind + " " + name)
+	if !compose.LookupKinds[kind] {
+		return nil, fmt.Errorf("lookup: unsupported kind %q", kind)
+	}
+	if o, ok := f.Objects[kind+"/"+name]; ok {
+		return o, nil
+	}
+	return map[string]interface{}{}, nil
 }

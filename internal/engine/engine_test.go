@@ -160,3 +160,45 @@ secret: b.txt: YmVl`
 		t.Errorf("got:\n%s\nwant:\n%s", got, want)
 	}
 }
+
+func TestCapabilitiesAndLookup(t *testing.T) {
+	c := testChart(map[string]string{
+		"x.yaml": `{{ if semverCompare ">=2.24" .Capabilities.ComposeVersion }}new{{ else }}old{{ end }} ` +
+			`{{ .Capabilities.DockerVersion }} ` +
+			`[{{ (lookup "volume" "data").Name }}]`,
+	}, nil)
+	caps := map[string]interface{}{"ComposeVersion": "2.30.0", "DockerVersion": "29.0.0"}
+
+	out, err := Render(c, nil, nil, Options{Capabilities: caps})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Templates[0].Content; got != "new 29.0.0 []" {
+		t.Errorf("without lookup: %q", got)
+	}
+
+	lookup := func(kind, name string) (map[string]interface{}, error) {
+		return map[string]interface{}{"Name": kind + ":" + name}, nil
+	}
+	out, err = Render(c, nil, nil, Options{Capabilities: caps, Lookup: lookup})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := out.Templates[0].Content; got != "new 29.0.0 [volume:data]" {
+		t.Errorf("with lookup: %q", got)
+	}
+}
+
+func TestNotes(t *testing.T) {
+	c := testChart(map[string]string{
+		"NOTES.txt": "hello {{ .Release.Name }}",
+		"x.yaml":    "a: 1",
+	}, map[string]string{"NOTES.txt": "library notes are ignored"})
+	out, err := Render(c, nil, map[string]interface{}{"Name": "rel"}, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if out.Notes != "hello rel" || len(out.Templates) != 1 {
+		t.Errorf("notes=%q templates=%d", out.Notes, len(out.Templates))
+	}
+}

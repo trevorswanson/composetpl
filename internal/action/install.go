@@ -42,10 +42,14 @@ func (i *Install) Run(ctx context.Context, name, chartPath string, userValues ma
 		revision = latest.Revision + 1
 	}
 
-	rendered, err := Render(RenderOptions{
+	ro, err := i.cfg.liveRenderOptions(ctx, RenderOptions{
 		ChartPath: chartPath, ReleaseName: name, Revision: revision, UserValues: userValues,
 		Strict: i.Strict, NoEnv: i.NoEnv,
-	})
+	}, i.DryRun)
+	if err != nil {
+		return nil, err
+	}
+	rendered, err := Render(ro)
 	if err != nil {
 		return nil, err
 	}

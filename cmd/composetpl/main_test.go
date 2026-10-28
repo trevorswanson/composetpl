@@ -96,9 +96,10 @@ func TestLint(t *testing.T) {
 		t.Errorf("unexpected output:\n%s", out)
 	}
 
+	// The schema catches the missing image before the template's `required` does.
 	out, err = run(t, "lint", exampleChart, "--set", "apps.sonarr.image=null")
-	if err == nil || !strings.Contains(err.Error(), "apps.sonarr.image is required") {
-		t.Errorf("expected required error, got %v\n%s", err, out)
+	if err == nil || !strings.Contains(err.Error(), "at '/apps/sonarr': missing property 'image'") {
+		t.Errorf("expected schema error, got %v\n%s", err, out)
 	}
 }
 
@@ -201,5 +202,71 @@ func TestInstallErrors(t *testing.T) {
 	}
 	if _, err := run(t, "rollback", "media", "zero"); err == nil {
 		t.Error("expected invalid revision error")
+	}
+}
+
+func TestSchemaValidation(t *testing.T) {
+	_, err := run(t, "template", exampleChart, "--set", "apps.sonarr.ingress.port=high", "--set", "global.restart=sometimes")
+	if err == nil {
+		t.Fatal("expected schema errors")
+	}
+	expect(t, err.Error(), "schema in chart media", "/apps/sonarr/ingress/port", "/global/restart")
+
+	useFakeDocker(t)
+	if _, err := run(t, "install", "media", exampleChart, "--set", "global.puid=-1"); err == nil ||
+		!strings.Contains(err.Error(), "/global/puid") {
+		t.Errorf("install should validate the schema: %v", err)
+	}
+}
+
+func TestDiffCLI(t *testing.T) {
+	useFakeDocker(t)
+	out := mustRun(t, "diff", "upgrade", "media", exampleChart)
+	expect(t, out, "media, services/sonarr, added:", "+image: lscr.io/linuxserver/sonarr:latest", "media, networks/proxy, added:")
+
+	mustRun(t, "install", "media", exampleChart)
+	out, err := run(t, "diff", "upgrade", "media", exampleChart, "--detailed-exitcode")
+	if err != nil || strings.Contains(out, "services/") {
+		t.Errorf("unchanged upgrade should show no changes: %v\n%s", err, out)
+	}
+
+	out, err = run(t, "diff", "upgrade", "media", exampleChart, "--set", "apps.sonarr.tag=4.0.0", "--set", "apps.plex.enabled=false", "--detailed-exitcode")
+	if exitCode(err) != 2 {
+		t.Errorf("--detailed-exitcode should exit 2 on changes, got %v", err)
+	}
+	expect(t, out, "media, services/plex, removed:", "media, services/sonarr, changed:",
+		"-image: lscr.io/linuxserver/sonarr:latest", "+image: lscr.io/linuxserver/sonarr:4.0.0")
+	if strings.Contains(out, "\x1b[") {
+		t.Error("colour should be off when not writing to a terminal")
+	}
+
+	mustRun(t, "upgrade", "media", exampleChart, "--set", "apps.sonarr.tag=4.0.0")
+	expect(t, mustRun(t, "diff", "rollback", "media"), "services/sonarr, changed:", "+image: lscr.io/linuxserver/sonarr:latest")
+	expect(t, mustRun(t, "diff", "revision", "media", "1", "2"), "-image: lscr.io/linuxserver/sonarr:latest")
+	if _, err := run(t, "diff", "revision", "media", "2"); err == nil {
+		t.Error("comparing a revision with itself should fail")
+	}
+}
+
+func TestTemplateCapabilitiesFlags(t *testing.T) {
+	dir := t.TempDir()
+	writeFiles(t, dir, map[string]string{
+		"Chart.yaml":       "name: caps\n",
+		"templates/x.yaml": "x-caps: {{ .Capabilities.ComposeVersion }}/{{ .Capabilities.DockerVersion }}\nx-lookup: {{ lookup \"volume\" \"data\" | toJson | quote }}\n",
+	})
+	expect(t, mustRun(t, "template", dir), "x-caps: 2.20.0/25.0.0", `x-lookup: "{}"`)
+	expect(t, mustRun(t, "template", dir, "--compose-version", "2.31.0", "--docker-version", "28.1.1"), "x-caps: 2.31.0/28.1.1")
+}
+
+func writeFiles(t *testing.T, dir string, files map[string]string) {
+	t.Helper()
+	for name, content := range files {
+		p := filepath.Join(dir, name)
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
