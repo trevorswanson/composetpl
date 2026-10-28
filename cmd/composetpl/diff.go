@@ -84,7 +84,7 @@ func newDiffUpgradeCmd(g *globalFlags) *cobra.Command {
 				return err
 			}
 			u := action.NewUpgrade(cfg)
-			u.Strict, u.NoEnv = rf.strict, rf.noEnv
+			u.Strict, u.NoEnv, u.ChartVersion = rf.strict, rf.noEnv, rf.chartVersion
 			u.ReuseValues, u.ResetValues, u.ResetThenReuseValues = up.ReuseValues, up.ResetValues, up.ResetThenReuseValues
 			changes, err := action.DiffUpgrade(ctx(cmd), cfg, u, args[0], args[1], user)
 			rf.printDebug(cmd.ErrOrStderr(), err)

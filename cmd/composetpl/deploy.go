@@ -37,6 +37,7 @@ docker compose -p NAME up -d --remove-orphans, and record revision 1.`,
 			a := action.NewInstall(cfg)
 			a.DeployOptions, a.Strict, a.NoEnv = df.DeployOptions, rf.strict, rf.noEnv
 			a.Atomic, a.DryRun, a.Description, a.ProjectDir = in.Atomic, in.DryRun, in.Description, in.ProjectDir
+			a.ChartVersion = rf.chartVersion
 			rel, err := a.Run(ctx(cmd), args[0], args[1], user)
 			rf.printDebug(cmd.ErrOrStderr(), err)
 			if err != nil {
@@ -83,6 +84,7 @@ With no -f/--set flags the previous revision's values are reused, as in Helm.`,
 			a.DeployOptions, a.Strict, a.NoEnv = df.DeployOptions, rf.strict, rf.noEnv
 			a.Install, a.ReuseValues, a.ResetValues, a.ResetThenReuseValues = up.Install, up.ReuseValues, up.ResetValues, up.ResetThenReuseValues
 			a.HistoryMax, a.Atomic, a.DryRun, a.Description, a.ProjectDir = up.HistoryMax, up.Atomic, up.DryRun, up.Description, up.ProjectDir
+			a.ChartVersion = rf.chartVersion
 			rel, err := a.Run(ctx(cmd), args[0], args[1], user)
 			rf.printDebug(cmd.ErrOrStderr(), err)
 			if err != nil {

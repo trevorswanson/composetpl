@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"composetpl/internal/action"
 	"composetpl/internal/chart"
 )
 
@@ -27,11 +28,17 @@ func newCreateCmd() *cobra.Command {
 	}
 }
 
-func newShowCmd(load func(cmd *cobra.Command, ref string) (*chart.Chart, error)) *cobra.Command {
+func newShowCmd(g *globalFlags) *cobra.Command {
+	var version string
 	cmd := &cobra.Command{
 		Use:     "show",
 		Aliases: []string{"inspect"},
-		Short:   "Show a chart's information",
+		Short:   "Show a chart's information (directory, .tgz or oci:// reference)",
+	}
+	cmd.PersistentFlags().StringVar(&version, "version", "", "chart version constraint for oci:// charts")
+	load := func(cmd *cobra.Command, ref string) (*chart.Chart, error) {
+		c, _, err := action.LoadChart(ctx(cmd), g.registry(cmd), ref, version)
+		return c, err
 	}
 	sections := []struct {
 		use, short string

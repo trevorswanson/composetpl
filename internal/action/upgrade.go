@@ -25,6 +25,8 @@ type Upgrade struct {
 	DryRun               bool
 	Description          string
 	ProjectDir           string
+	// ChartVersion is a semver constraint for oci:// charts.
+	ChartVersion string
 }
 
 // NewUpgrade returns an Upgrade action with Helm's default history limit.
@@ -44,7 +46,8 @@ func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues ma
 			return nil, fmt.Errorf("%q has no deployed releases", name)
 		}
 		in := &Install{cfg: u.cfg, DeployOptions: u.DeployOptions, Strict: u.Strict, NoEnv: u.NoEnv,
-			Atomic: u.Atomic, DryRun: u.DryRun, Description: u.Description, ProjectDir: u.ProjectDir}
+			Atomic: u.Atomic, DryRun: u.DryRun, Description: u.Description, ProjectDir: u.ProjectDir,
+			ChartVersion: u.ChartVersion}
 		return in.Run(ctx, name, chartPath, userValues)
 	}
 	latest := h[len(h)-1]
@@ -61,7 +64,7 @@ func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues ma
 
 	config, defaults := u.resolveValues(current, userValues)
 	ro, err := u.cfg.liveRenderOptions(ctx, RenderOptions{
-		ChartPath: chartPath, ReleaseName: name, Revision: latest.Revision + 1, IsUpgrade: true,
+		ChartPath: chartPath, Version: u.ChartVersion, ReleaseName: name, Revision: latest.Revision + 1, IsUpgrade: true,
 		UserValues: config, Defaults: defaults, Strict: u.Strict, NoEnv: u.NoEnv,
 	}, u.DryRun)
 	if err != nil {

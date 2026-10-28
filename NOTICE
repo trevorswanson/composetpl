@@ -6,6 +6,25 @@ Copyright The Helm Authors, licensed under the Apache License, Version 2.0.
 The adapted portions are in internal/engine/engine.go and
 internal/engine/funcs.go and have been modified for this project.
 
-Third-party Go modules compiled into the binary are distributed under their
-own licenses (MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0); see each
-module's LICENSE file, e.g. via `go mod download` and $(go env GOMODCACHE).
+This product includes the YAML libraries go.yaml.in/yaml/v2,
+go.yaml.in/yaml/v3 and gopkg.in/yaml.v3, whose NOTICE reads:
+
+  Copyright 2011-2016 Canonical Ltd.
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+Other third-party Go modules compiled into the binary are distributed under
+their own licenses: MIT (e.g. Sprig, semver, go-udiff, sigs.k8s.io/yaml),
+BSD-2-Clause / BSD-3-Clause (e.g. pflag, mergo, golang.org/x/*) and
+Apache-2.0 (e.g. cobra, oras-go, opencontainers, jsonschema). See each
+module's LICENSE file, e.g. with `go mod download` under $(go env GOMODCACHE).

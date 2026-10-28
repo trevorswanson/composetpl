@@ -19,16 +19,18 @@ import (
 	"composetpl/internal/action"
 	"composetpl/internal/compose"
 	"composetpl/internal/output"
+	"composetpl/internal/registry"
 	"composetpl/internal/storage"
 	"composetpl/internal/values"
 )
 
 // globalFlags select the Docker engine and release storage.
 type globalFlags struct {
-	context  string
-	host     string
-	storage  string
-	stateDir string
+	context   string
+	host      string
+	storage   string
+	stateDir  string
+	plainHTTP bool
 }
 
 func (g *globalFlags) register(root *cobra.Command) {
@@ -37,6 +39,8 @@ func (g *globalFlags) register(root *cobra.Command) {
 	fs.StringVarP(&g.host, "host", "H", "", "docker daemon socket to connect to")
 	fs.StringVar(&g.storage, "storage", envOr("COMPOSETPL_STORAGE", "volume"),
 		"release storage driver: volume (on the Docker host) or local [$COMPOSETPL_STORAGE]")
+	fs.BoolVar(&g.plainHTTP, "plain-http", os.Getenv("COMPOSETPL_PLAIN_HTTP") != "",
+		"use http instead of https for OCI registries (always on for localhost) [$COMPOSETPL_PLAIN_HTTP]")
 	fs.StringVar(&g.stateDir, "state-dir", os.Getenv("COMPOSETPL_STATE_DIR"),
 		"directory for the local storage driver (default $XDG_STATE_HOME/composetpl/<docker context>) [$COMPOSETPL_STATE_DIR]")
 }
@@ -85,6 +89,19 @@ func sanitize(s string) string {
 	return strings.Trim(unsafeChars.ReplaceAllString(s, "_"), "_")
 }
 
+// registry returns an OCI client honouring --plain-http.
+func (g *globalFlags) registry(cmd *cobra.Command) *registry.Client {
+	if testRegistry != nil {
+		return testRegistry
+	}
+	r := registry.New(cmd.ErrOrStderr())
+	r.PlainHTTP = r.PlainHTTP || g.plainHTTP
+	return r
+}
+
+// testRegistry, when set by tests, replaces the OCI client.
+var testRegistry *registry.Client
+
 // testConfig, when set by tests, replaces the docker-backed configuration.
 var testConfig func(cmd *cobra.Command) (*action.Configuration, error)
 
@@ -92,7 +109,11 @@ var testConfig func(cmd *cobra.Command) (*action.Configuration, error)
 // installed and new enough; read-only commands on local storage skip it.
 func (g *globalFlags) config(cmd *cobra.Command, needCompose bool) (*action.Configuration, error) {
 	if testConfig != nil {
-		return testConfig(cmd)
+		cfg, err := testConfig(cmd)
+		if err == nil {
+			cfg.Registry = g.registry(cmd)
+		}
+		return cfg, err
 	}
 	cli := compose.NewCLI(g.dockerArgs(), cmd.ErrOrStderr())
 	if needCompose || g.storage == "volume" {
@@ -123,7 +144,7 @@ func (g *globalFlags) config(cmd *cobra.Command, needCompose bool) (*action.Conf
 	default:
 		return nil, fmt.Errorf("unknown --storage %q (want volume or local)", g.storage)
 	}
-	return &action.Configuration{Store: store, Compose: cli, Log: cmd.ErrOrStderr()}, nil
+	return &action.Configuration{Store: store, Compose: cli, Log: cmd.ErrOrStderr(), Registry: g.registry(cmd)}, nil
 }
 
 // valueFlags are the Helm value flags.
@@ -141,13 +162,15 @@ func (f *valueFlags) register(fs *pflag.FlagSet) {
 // renderFlags control template rendering.
 type renderFlags struct {
 	valueFlags
-	strict bool
-	noEnv  bool
-	debug  bool
+	strict       bool
+	noEnv        bool
+	debug        bool
+	chartVersion string
 }
 
 func (f *renderFlags) register(fs *pflag.FlagSet) {
 	f.valueFlags.register(fs)
+	fs.StringVar(&f.chartVersion, "version", "", "chart version constraint for oci:// charts, e.g. ^1.2.0 (default: latest)")
 	fs.BoolVar(&f.strict, "strict", false, "fail on references to missing values")
 	fs.BoolVar(&f.noEnv, "no-env", false, "disable the env and expandenv template functions")
 	fs.BoolVar(&f.debug, "debug", false, "print the raw rendered output when it is not valid YAML")

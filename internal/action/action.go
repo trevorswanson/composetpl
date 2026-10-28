@@ -18,6 +18,7 @@ import (
 	"composetpl/internal/engine"
 	"composetpl/internal/hooks"
 	"composetpl/internal/output"
+	"composetpl/internal/registry"
 	"composetpl/internal/release"
 	"composetpl/internal/storage"
 	"composetpl/internal/values"
@@ -30,6 +31,8 @@ type Configuration struct {
 	// Log receives warnings and progress meant for humans.
 	Log io.Writer
 	Now func() time.Time
+	// Registry pulls oci:// charts; nil uses a default client.
+	Registry *registry.Client
 
 	caps map[string]interface{}
 }
@@ -59,6 +62,10 @@ func (c *Configuration) liveRenderOptions(ctx context.Context, o RenderOptions, 
 		return o, err
 	}
 	o.Capabilities = caps
+	o.Context = ctx
+	if o.Registry == nil {
+		o.Registry = c.Registry
+	}
 	if !dryRun {
 		o.Lookup = func(kind, name string) (map[string]interface{}, error) {
 			return c.Compose.Inspect(ctx, kind, name)
@@ -82,7 +89,14 @@ func (c *Configuration) warnf(format string, args ...interface{}) {
 
 // RenderOptions describe how to render a chart.
 type RenderOptions struct {
-	ChartPath   string
+	// ChartPath is a chart directory, .tgz, or oci:// reference.
+	ChartPath string
+	// Version is a semver constraint for oci:// charts without a tag.
+	Version string
+	// Registry pulls oci:// charts; nil uses a default client.
+	Registry *registry.Client
+	// Context bounds registry access; nil means context.Background().
+	Context     context.Context
 	ReleaseName string
 	// Revision and IsUpgrade populate .Release; revision 0 renders as 1 (an install).
 	Revision  int
@@ -121,7 +135,11 @@ type Rendered struct {
 
 // Render loads and renders a chart.
 func Render(o RenderOptions) (*Rendered, error) {
-	c, err := chart.Load(o.ChartPath)
+	ctx := o.Context
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	c, ref, err := LoadChart(ctx, o.Registry, o.ChartPath, o.Version)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +180,7 @@ func Render(o RenderOptions) (*Rendered, error) {
 			return nil, err
 		}
 	}
-	return &Rendered{Chart: c, ChartRef: o.ChartPath, Values: vals, Templates: templates, Notes: res.Notes}, nil
+	return &Rendered{Chart: c, ChartRef: ref, Values: vals, Templates: templates, Notes: res.Notes}, nil
 }
 
 func filterShowOnly(chartName string, rendered []engine.Rendered, only []string) ([]engine.Rendered, error) {

@@ -31,14 +31,14 @@ func (f *templateFlags) register(cmd *cobra.Command) {
 	cmd.Flags().StringVar(&f.dockerVersion, "docker-version", caps["DockerVersion"].(string), "engine version for .Capabilities.DockerVersion")
 }
 
-func (f *templateFlags) render(chartPath string) (*action.Rendered, error) {
+func (f *templateFlags) render(cmd *cobra.Command, g *globalFlags, chartPath string) (*action.Rendered, error) {
 	user, err := f.MergeValues()
 	if err != nil {
 		return nil, err
 	}
 	return action.Render(action.RenderOptions{
-		ChartPath: chartPath, ReleaseName: f.name, UserValues: user,
-		Strict: f.strict, NoEnv: f.noEnv, ShowOnly: f.showOnly,
+		ChartPath: chartPath, Version: f.chartVersion, Context: ctx(cmd), Registry: g.registry(cmd),
+		ReleaseName: f.name, UserValues: user, Strict: f.strict, NoEnv: f.noEnv, ShowOnly: f.showOnly,
 		Capabilities: map[string]interface{}{"ComposeVersion": f.composeVersion, "DockerVersion": f.dockerVersion},
 	})
 }
@@ -50,7 +50,7 @@ func (f *templateFlags) releaseName(r *action.Rendered) string {
 	return r.Chart.Metadata.Name
 }
 
-func newTemplateCmd() *cobra.Command {
+func newTemplateCmd(g *globalFlags) *cobra.Command {
 	var (
 		f            templateFlags
 		outFile      string
@@ -71,7 +71,7 @@ to stdout (or --output). With --output-dir each template is written to its own f
 			if outFile != "" && outputDir != "" {
 				return errors.New("--output and --output-dir are mutually exclusive")
 			}
-			r, err := f.render(args[0])
+			r, err := f.render(cmd, g, args[0])
 			if err != nil {
 				return err
 			}
@@ -114,14 +114,14 @@ to stdout (or --output). With --output-dir each template is written to its own f
 	return cmd
 }
 
-func newLintCmd() *cobra.Command {
+func newLintCmd(g *globalFlags) *cobra.Command {
 	var f templateFlags
 	cmd := &cobra.Command{
 		Use:   "lint CHART",
 		Short: "Render a chart and check the result is a plausible compose file",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			r, err := f.render(args[0])
+			r, err := f.render(cmd, g, args[0])
 			if err != nil {
 				return err
 			}

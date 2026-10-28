@@ -11,7 +11,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"composetpl/internal/action"
+	"composetpl/internal/chart"
 	"composetpl/internal/compose/composetest"
+	"composetpl/internal/registry/registrytest"
 	"composetpl/internal/storage"
 )
 
@@ -330,4 +332,138 @@ func TestChartAuthoringCLI(t *testing.T) {
 	expect(t, mustRun(t, "get", "metadata", "media"), "VERSION: 0.2.0", "PROJECT DIRECTORY: "+cwd, "CHART REF: "+tgz)
 	mustRun(t, "upgrade", "media", exampleChart)
 	expect(t, mustRun(t, "history", "media"), "media-0.2.0", "media-0.1.0")
+}
+
+func useFakeRegistry(t *testing.T) {
+	t.Helper()
+	testRegistry = registrytest.New().Client()
+	t.Cleanup(func() { testRegistry = nil })
+}
+
+func TestOCIWorkflowCLI(t *testing.T) {
+	useFakeRegistry(t)
+	dist := t.TempDir()
+	mustRun(t, "package", exampleChart, "-d", dist)
+	mustRun(t, "package", exampleChart, "-d", dist, "--version", "0.2.0")
+	expect(t, mustRun(t, "push", filepath.Join(dist, "media-0.1.0.tgz"), "oci://registry.lan/charts"),
+		"Pushed: oci://registry.lan/charts/media:0.1.0", "Digest: sha256:")
+	mustRun(t, "push", filepath.Join(dist, "media-0.2.0.tgz"), "oci://registry.lan/charts")
+
+	pulled := t.TempDir()
+	expect(t, mustRun(t, "pull", "oci://registry.lan/charts/media", "--version", "~0.1", "-d", pulled),
+		"Pulled: oci://registry.lan/charts/media:0.1.0", "Saved: "+filepath.Join(pulled, "media-0.1.0.tgz"))
+	mustRun(t, "pull", "oci://registry.lan/charts/media:0.2.0", "-d", pulled, "--untar")
+	expect(t, mustRun(t, "show", "chart", filepath.Join(pulled, "media")), "version: 0.2.0")
+	expect(t, mustRun(t, "show", "chart", "oci://registry.lan/charts/media", "--version", "0.1.0"), "version: 0.1.0")
+
+	if got := mustRun(t, "template", "oci://registry.lan/charts/media"); got != mustRun(t, "template", exampleChart) {
+		t.Errorf("oci chart renders differently:\n%s", got)
+	}
+
+	useFakeDocker(t)
+	mustRun(t, "install", "media", "oci://registry.lan/charts/media", "--version", "^0.1")
+	expect(t, mustRun(t, "get", "metadata", "media"), "VERSION: 0.1.0", "CHART REF: oci://registry.lan/charts/media:0.1.0@sha256:")
+	mustRun(t, "upgrade", "media", "oci://registry.lan/charts/media")
+	expect(t, mustRun(t, "history", "media"), "media-0.1.0", "media-0.2.0")
+	if _, err := run(t, "install", "other", exampleChart, "--version", "1.0.0"); err == nil ||
+		!strings.Contains(err.Error(), "--version only applies to oci:// charts") {
+		t.Errorf("got %v", err)
+	}
+}
+
+func TestDependencyCLI(t *testing.T) {
+	useFakeRegistry(t)
+	dist := t.TempDir()
+	mustRun(t, "package", "../../examples/homelab/common", "-d", dist)
+	mustRun(t, "push", filepath.Join(dist, "common-0.1.0.tgz"), "oci://registry.lan/charts")
+
+	app := filepath.Join(t.TempDir(), "app")
+	writeFiles(t, app, map[string]string{
+		"Chart.yaml": "name: app\nversion: 1.0.0\ndependencies:\n  - name: common\n    version: ^0.1.0\n    repository: oci://registry.lan/charts\n",
+		"values.yaml": "global: {tz: UTC, puid: 1, pgid: 1, domain: lan, network: proxy, certResolver: le, configRoot: /data}\n" +
+			"apps:\n  whoami: {enabled: true, image: traefik/whoami, ingress: {port: 80}}\n",
+		"templates/apps.yaml": "services:\n{{- range $n, $a := .Values.apps }}\n  {{- include \"common.service\" (dict \"name\" $n \"app\" $a \"root\" $) | nindent 2 }}\n{{- end }}\n",
+	})
+
+	expect(t, mustRun(t, "dependency", "list", app), "common", "^0.1.0", "oci://registry.lan/charts", "missing")
+	if _, err := run(t, "template", app); err == nil || !strings.Contains(err.Error(), "dependency build") {
+		t.Errorf("unvendored oci dependency should fail: %v", err)
+	}
+
+	expect(t, mustRun(t, "dependency", "update", app), "Saved 1 dependencies and Chart.lock")
+	lock, _ := os.ReadFile(filepath.Join(app, "Chart.lock"))
+	expect(t, string(lock), "name: common", "version: 0.1.0", "digest: sha256:")
+	expect(t, mustRun(t, "dependency", "list", app), "ok")
+	expect(t, mustRun(t, "template", app), "whoami:", "image: traefik/whoami:latest", "traefik.http.routers.whoami.rule")
+
+	// build restores exactly what the lock says.
+	must(t, os.Remove(filepath.Join(app, "charts", "common-0.1.0.tgz")))
+	expect(t, mustRun(t, "dependency", "build", app), "Restored 1 dependencies")
+	mustRun(t, "template", app)
+
+	// A tampered lock is refused.
+	must(t, os.Remove(filepath.Join(app, "charts", "common-0.1.0.tgz")))
+	l, err := chart.ReadLock(app)
+	must(t, err)
+	l.Dependencies[0].Digest = "sha256:" + strings.Repeat("f", 64)
+	must(t, l.Write(app))
+	if _, err := run(t, "dependency", "build", app); err == nil || !strings.Contains(err.Error(), "does not match") {
+		t.Errorf("tampered lock: %v", err)
+	}
+
+	// Changing Chart.yaml's dependencies makes the lock stale.
+	writeFiles(t, app, map[string]string{"Chart.lock": string(lock),
+		"Chart.yaml": "name: app\nversion: 1.0.0\ndependencies:\n  - name: common\n    version: ^0.2.0\n    repository: oci://registry.lan/charts\n"})
+	if _, err := run(t, "dependency", "build", app); err == nil || !strings.Contains(err.Error(), "out of date") {
+		t.Errorf("stale lock: %v", err)
+	}
+	if _, err := run(t, "dependency", "update", app); err == nil || !strings.Contains(err.Error(), `no version of oci://registry.lan/charts/common matches "^0.2.0"`) {
+		t.Errorf("unsatisfiable update: %v", err)
+	}
+}
+
+func TestFileDependencyUpdate(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"common", "stack"} {
+		copyDir(t, filepath.Join("../../examples/homelab", d), filepath.Join(root, d))
+	}
+	stack := filepath.Join(root, "stack")
+	expect(t, mustRun(t, "dependency", "list", stack), "file://../common", "ok (file)")
+	mustRun(t, "dependency", "update", stack)
+	if _, err := os.Stat(filepath.Join(stack, "charts", "common-0.1.0.tgz")); err != nil {
+		t.Fatal(err)
+	}
+	// With common vendored, the stack renders even if ../common disappears.
+	must(t, os.RemoveAll(filepath.Join(root, "common")))
+	if got := mustRun(t, "template", stack); got != mustRun(t, "template", exampleChart) {
+		t.Error("vendored stack renders differently")
+	}
+}
+
+func copyDir(t *testing.T, src, dst string) {
+	t.Helper()
+	err := filepath.Walk(src, func(p string, fi os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, _ := filepath.Rel(src, p)
+		if fi.IsDir() {
+			return os.MkdirAll(filepath.Join(dst, rel), 0o755)
+		}
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		return os.WriteFile(filepath.Join(dst, rel), data, 0o644)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatal(err)
+	}
 }

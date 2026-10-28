@@ -18,6 +18,8 @@ type Install struct {
 	Atomic      bool
 	DryRun      bool
 	Description string
+	// ChartVersion is a semver constraint for oci:// charts.
+	ChartVersion string
 	// ProjectDir overrides the compose project directory (default: the chart dir).
 	ProjectDir string
 }
@@ -44,7 +46,7 @@ func (i *Install) Run(ctx context.Context, name, chartPath string, userValues ma
 	}
 
 	ro, err := i.cfg.liveRenderOptions(ctx, RenderOptions{
-		ChartPath: chartPath, ReleaseName: name, Revision: revision, UserValues: userValues,
+		ChartPath: chartPath, Version: i.ChartVersion, ReleaseName: name, Revision: revision, UserValues: userValues,
 		Strict: i.Strict, NoEnv: i.NoEnv,
 	}, i.DryRun)
 	if err != nil {
