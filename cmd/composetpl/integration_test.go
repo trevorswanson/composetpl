@@ -92,13 +92,13 @@ func TestIntegrationLifecycle(t *testing.T) {
 			expect(t, mustRun(t, "test", name, "--logs"), "Phase:          Succeeded")
 
 			expect(t, mustRun(t, "diff", "upgrade", name, chartDir, "--set", "message=bonjour"),
-				"services/whoami, changed:", "+    - bonjour")
+				"services/whoami, changed:", `-command: ["--name", "hello"]`, `+command: ["--name", "bonjour"]`)
 			mustRun(t, "upgrade", name, chartDir, "--set", "message=bonjour", "--wait")
 			expect(t, mustRun(t, "test", name), "Succeeded")
 			expect(t, mustRun(t, "list"), name, "running(1)")
 			expect(t, mustRun(t, "history", name), "superseded", "deployed")
 
-			expect(t, mustRun(t, "diff", "rollback", name), "-    - bonjour", "+    - hello")
+			expect(t, mustRun(t, "diff", "rollback", name), `-command: ["--name", "bonjour"]`, `+command: ["--name", "hello"]`)
 			mustRun(t, "rollback", name, "--wait")
 			expect(t, mustRun(t, "get", "values", name, "--all"), "message: hello")
 			expect(t, mustRun(t, "test", name), "Succeeded")
