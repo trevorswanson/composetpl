@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -77,7 +78,12 @@ func newPullCmd(g *globalFlags) *cobra.Command {
 				return fmt.Errorf("%s already exists", dir)
 			}
 			for rel, data := range files {
+				// ReadArchive already rejects entries that escape the chart; check again
+				// before writing, since this is the one place archive paths hit the disk.
 				p := filepath.Join(dir, filepath.FromSlash(rel))
+				if r, err := filepath.Rel(dir, p); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+					return fmt.Errorf("archive entry %q escapes %s", rel, dir)
+				}
 				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 					return err
 				}

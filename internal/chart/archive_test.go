@@ -183,3 +183,17 @@ func TestCreate(t *testing.T) {
 		t.Error("expected invalid name error")
 	}
 }
+
+func TestLoadRejectsUnsafeMetadata(t *testing.T) {
+	for chartYAML, want := range map[string]string{
+		"name: ../../evil\nversion: 1.0.0\n": "invalid chart name",
+		"name: a/b\n":                        "invalid chart name",
+		"name: ok\nversion: ../1\n":          "not valid semver",
+		"name: ok\ndependencies:\n  - name: ../x\n    repository: file://x\n": "invalid dependency name",
+	} {
+		data, _ := WriteArchive("x", map[string][]byte{"Chart.yaml": []byte(chartYAML)})
+		if _, err := LoadArchive(data, Options{}); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%q: got %v, want %q", chartYAML, err, want)
+		}
+	}
+}

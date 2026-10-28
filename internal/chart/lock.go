@@ -74,8 +74,8 @@ func ReadMetadata(dir string) (*Metadata, error) {
 	if err := yaml.Unmarshal(data, md); err != nil {
 		return nil, fmt.Errorf("parsing %s/Chart.yaml: %w", dir, err)
 	}
-	if md.Name == "" {
-		return nil, fmt.Errorf("%s/Chart.yaml: name is required", dir)
+	if err := md.Validate(); err != nil {
+		return nil, fmt.Errorf("%s/Chart.yaml: %w", dir, err)
 	}
 	return md, nil
 }

@@ -125,7 +125,8 @@ func (g *globalFlags) config(cmd *cobra.Command, needCompose bool) (*action.Conf
 	switch g.storage {
 	case "volume":
 		v := storage.NewVolume(g.dockerArgs(), os.Getenv("COMPOSETPL_HELPER_IMAGE"))
-		v.Ctx = cmd.Context()
+		v.VolumeName = envOr("COMPOSETPL_VOLUME", storage.DefaultVolume)
+		v.Ctx = ctx(cmd)
 		store = v
 	case "local":
 		dir := g.stateDir

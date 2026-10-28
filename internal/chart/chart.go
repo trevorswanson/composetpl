@@ -9,9 +9,11 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 
+	"github.com/Masterminds/semver/v3"
 	"sigs.k8s.io/yaml"
 )
 
@@ -25,6 +27,31 @@ type Metadata struct {
 	Description  string        `json:"description,omitempty"`
 	Type         string        `json:"type,omitempty"`
 	Dependencies []*Dependency `json:"dependencies,omitempty"`
+}
+
+// nameRegexp restricts chart and dependency names: they become file names
+// (charts/<name>-<version>.tgz, pull destinations) and registry paths.
+var nameRegexp = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.-]*$`)
+
+// Validate checks the fields that end up in file names and registry paths.
+func (md *Metadata) Validate() error {
+	if md.Name == "" {
+		return fmt.Errorf("name is required")
+	}
+	if !nameRegexp.MatchString(md.Name) || strings.Contains(md.Name, "..") {
+		return fmt.Errorf("invalid chart name %q: use letters, digits, '-', '_' and '.'", md.Name)
+	}
+	if md.Version != "" {
+		if _, err := semver.StrictNewVersion(md.Version); err != nil {
+			return fmt.Errorf("version %q is not valid semver: %w", md.Version, err)
+		}
+	}
+	for _, d := range md.Dependencies {
+		if !nameRegexp.MatchString(d.Name) || strings.Contains(d.Name, "..") {
+			return fmt.Errorf("invalid dependency name %q", d.Name)
+		}
+	}
+	return nil
 }
 
 // Dependency is a Chart.yaml dependency entry.
@@ -178,8 +205,8 @@ func fromFiles(files map[string][]byte, dir, ref string, o Options, stack []stri
 	if err := yaml.Unmarshal(raw, md); err != nil {
 		return nil, fmt.Errorf("parsing %s/Chart.yaml: %w", ref, err)
 	}
-	if md.Name == "" {
-		return nil, fmt.Errorf("%s/Chart.yaml: name is required", ref)
+	if err := md.Validate(); err != nil {
+		return nil, fmt.Errorf("%s/Chart.yaml: %w", ref, err)
 	}
 
 	c := &Chart{Metadata: md, Dir: dir, Raw: files, Values: map[string]interface{}{}, Files: map[string][]byte{}}
