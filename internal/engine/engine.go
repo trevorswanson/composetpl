@@ -32,6 +32,13 @@ type Rendered struct {
 	Content string
 }
 
+// Result is the output of rendering a chart.
+type Result struct {
+	Templates []Rendered
+	// Notes is the rendered templates/NOTES.txt of the root chart, if any.
+	Notes string
+}
+
 const recursionMaxNums = 1000
 
 const (
@@ -46,8 +53,8 @@ func warnWrap(warn string) string {
 }
 
 // Render parses every template of c and its dependencies into one set, then renders
-// the root chart's non-partial templates. release becomes .Release.
-func Render(c *chart.Chart, vals map[string]interface{}, release map[string]interface{}, opts Options) ([]Rendered, error) {
+// the root chart's non-partial templates and its NOTES.txt. release becomes .Release.
+func Render(c *chart.Chart, vals map[string]interface{}, release map[string]interface{}, opts Options) (*Result, error) {
 	t := template.New("gotpl")
 	if opts.Strict {
 		t.Option("missingkey=error")
@@ -65,9 +72,10 @@ func Render(c *chart.Chart, vals map[string]interface{}, release map[string]inte
 	}
 
 	files := Files(c.Files)
-	var out []Rendered
+	out := &Result{}
+	notesName := c.Metadata.Name + "/templates/NOTES.txt"
 	for _, tpl := range c.Templates {
-		if tpl.IsPartial() {
+		if tpl.IsPartial() && tpl.Name != notesName {
 			continue
 		}
 		data := map[string]interface{}{
@@ -84,10 +92,12 @@ func Render(c *chart.Chart, vals map[string]interface{}, release map[string]inte
 		if err := t.ExecuteTemplate(&buf, tpl.Name, data); err != nil {
 			return nil, cleanupExecError(tpl.Name, err)
 		}
-		out = append(out, Rendered{
-			Name:    tpl.Name,
-			Content: strings.ReplaceAll(buf.String(), "<no value>", ""),
-		})
+		content := strings.ReplaceAll(buf.String(), "<no value>", "")
+		if tpl.Name == notesName {
+			out.Notes = content
+			continue
+		}
+		out.Templates = append(out.Templates, Rendered{Name: tpl.Name, Content: content})
 	}
 	return out, nil
 }

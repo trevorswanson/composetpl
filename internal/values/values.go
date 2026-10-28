@@ -30,7 +30,7 @@ func (o Options) MergeValues() (map[string]interface{}, error) {
 		if err := yaml.Unmarshal(raw, &cur); err != nil {
 			return nil, fmt.Errorf("parsing %s: %w", f, err)
 		}
-		base = mergeMaps(base, cur)
+		base = Merge(base, cur)
 	}
 	for _, v := range o.Values {
 		if err := strvals.ParseInto(v, base); err != nil {
@@ -79,8 +79,9 @@ func Coalesce(user, defaults map[string]interface{}) map[string]interface{} {
 	return out
 }
 
-// mergeMaps deep-merges b onto a, keeping nulls so Coalesce can delete keys later.
-func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
+// Merge deep-merges b onto a, keeping nulls so Coalesce can delete keys later.
+// Neither input is modified.
+func Merge(a, b map[string]interface{}) map[string]interface{} {
 	out := make(map[string]interface{}, len(a))
 	for k, v := range a {
 		out[k] = v
@@ -88,7 +89,7 @@ func mergeMaps(a, b map[string]interface{}) map[string]interface{} {
 	for k, v := range b {
 		if vm, ok := v.(map[string]interface{}); ok {
 			if am, ok := out[k].(map[string]interface{}); ok {
-				out[k] = mergeMaps(am, vm)
+				out[k] = Merge(am, vm)
 				continue
 			}
 		}

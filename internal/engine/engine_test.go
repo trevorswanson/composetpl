@@ -36,7 +36,7 @@ func render(t *testing.T, c *chart.Chart, vals map[string]interface{}, opts Opti
 		t.Fatal(err)
 	}
 	m := map[string]string{}
-	for _, r := range out {
+	for _, r := range out.Templates {
 		m[strings.TrimPrefix(r.Name, "app/templates/")] = r.Content
 	}
 	return m

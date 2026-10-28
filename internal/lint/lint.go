@@ -66,11 +66,14 @@ func hasKey(m *yaml.Node, key string) bool {
 	return false
 }
 
-// DockerCompose runs `docker compose config -q` against doc when docker is on PATH.
-// It returns ran=false when docker is not installed.
+// DockerCompose runs `docker compose config -q` against doc when docker compose is
+// installed. It returns ran=false when docker or its compose plugin is missing.
 func DockerCompose(doc []byte) (ran bool, err error) {
 	docker, err := exec.LookPath("docker")
 	if err != nil {
+		return false, nil
+	}
+	if exec.Command(docker, "compose", "version").Run() != nil {
 		return false, nil
 	}
 	cmd := exec.Command(docker, "compose", "-f", "-", "config", "-q")

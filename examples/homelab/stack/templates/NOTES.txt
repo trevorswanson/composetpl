@@ -1,0 +1,8 @@
+{{ .Release.Name }} (revision {{ .Release.Revision }}) is up. Web UIs:
+{{- range $name, $app := .Values.apps }}
+{{- if and $app.enabled $app.ingress }}
+  - {{ $name }}: https://{{ $app.ingress.host | default (printf "%s.%s" $name $.Values.global.domain) }}
+{{- end }}
+{{- end }}
+
+Check on it with: composetpl status {{ .Release.Name }}

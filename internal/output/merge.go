@@ -154,6 +154,18 @@ func SetDefaultName(root *yaml.Node, name string) {
 	root.Content = append([]*yaml.Node{k, v}, root.Content...)
 }
 
+// SetName sets the top-level compose project `name:`, returning the previous value
+// ("" if there was none).
+func SetName(root *yaml.Node, name string) (previous string) {
+	if i := findKey(root, "name"); i >= 0 {
+		previous = root.Content[i+1].Value
+		root.Content[i+1] = &yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: name}
+		return previous
+	}
+	SetDefaultName(root, name)
+	return ""
+}
+
 // Encode serializes a node as YAML with 2-space indentation.
 func Encode(n *yaml.Node) ([]byte, error) {
 	var buf bytes.Buffer
