@@ -80,8 +80,11 @@ func newPullCmd(g *globalFlags) *cobra.Command {
 			for rel, data := range files {
 				// ReadArchive already rejects entries that escape the chart; check again
 				// before writing, since this is the one place archive paths hit the disk.
+				if strings.Contains(rel, "..") {
+					return fmt.Errorf("archive entry %q escapes %s", rel, dir)
+				}
 				p := filepath.Join(dir, filepath.FromSlash(rel))
-				if r, err := filepath.Rel(dir, p); err != nil || r == ".." || strings.HasPrefix(r, ".."+string(filepath.Separator)) {
+				if r, err := filepath.Rel(dir, p); err != nil || strings.HasPrefix(r, "..") {
 					return fmt.Errorf("archive entry %q escapes %s", rel, dir)
 				}
 				if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {

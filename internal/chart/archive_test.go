@@ -45,7 +45,10 @@ func rawArchive(t *testing.T, names ...string) []byte {
 }
 
 func TestReadArchiveRejectsEscapes(t *testing.T) {
-	for _, n := range []string{"../evil", "/etc/passwd", "x/../../evil", "toplevel"} {
+	for _, n := range []string{
+		"../evil", "/etc/passwd", "x/../../evil", "toplevel",
+		`chart\..\..\evil`, `chart/..\evil`, "chart/a/../../../evil", "C:/evil/x", `C:\evil\x`, "chart/..",
+	} {
 		if _, err := ReadArchive(rawArchive(t, n)); err == nil {
 			t.Errorf("%q should be rejected", n)
 		}
