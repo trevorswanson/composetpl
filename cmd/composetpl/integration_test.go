@@ -193,7 +193,8 @@ func TestIntegrationUmbrella(t *testing.T) {
 
 	mustRun(t, "install", name, filepath.Join(root, "site"), "--wait")
 	expect(t, mustRun(t, "status", name), name+"-one-1", name+"-two-1")
-	expect(t, mustRun(t, "get", "manifest", name), `- "--name"`, "hi-lab", "second-lab")
+	// Each alias gets its own values (default vs parent override) and the parent's global.
+	expect(t, mustRun(t, "get", "manifest", name), `command: ["--name", "hi-lab"]`, `command: ["--name", "second-lab"]`)
 
 	// Disabling a subchart removes its services from the running project.
 	mustRun(t, "upgrade", name, filepath.Join(root, "site"), "--set", "two.enabled=false", "--wait")
