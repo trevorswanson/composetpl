@@ -1,0 +1,9 @@
+{{ .Release.Name }} (revision {{ .Release.Revision }}) runs:
+{{- if .Values.media.enabled }}
+  - media
+{{- end }}
+{{- if .Values.monitoring.enabled }}
+  - monitoring
+{{- end }}
+
+Use --render-subchart-notes to see each stack's notes.

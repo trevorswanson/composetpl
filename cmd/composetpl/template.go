@@ -39,7 +39,8 @@ func (f *templateFlags) render(cmd *cobra.Command, g *globalFlags, chartPath str
 	return action.Render(action.RenderOptions{
 		ChartPath: chartPath, Version: f.chartVersion, Context: ctx(cmd), Registry: g.registry(cmd),
 		ReleaseName: f.name, UserValues: user, Strict: f.strict, NoEnv: f.noEnv, ShowOnly: f.showOnly,
-		Capabilities: map[string]interface{}{"ComposeVersion": f.composeVersion, "DockerVersion": f.dockerVersion},
+		SubchartNotes: f.subchartNotes,
+		Capabilities:  map[string]interface{}{"ComposeVersion": f.composeVersion, "DockerVersion": f.dockerVersion},
 	})
 }
 

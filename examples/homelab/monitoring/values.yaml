@@ -1,0 +1,37 @@
+# Defaults for running this stack on its own. Inside the homelab umbrella, the
+# umbrella's global values replace these.
+global:
+  tz: Etc/UTC
+  puid: 1000
+  pgid: 1000
+  domain: home.example.com
+  network: proxy
+  certResolver: letsencrypt
+  restart: unless-stopped
+  configRoot: /opt/appdata
+
+apps:
+  dozzle:
+    enabled: true
+    image: amir20/dozzle
+    skipIds: true
+    config: false
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ingress:
+      port: 8080
+    homepage:
+      group: Monitoring
+
+  uptime-kuma:
+    enabled: true
+    image: louislam/uptime-kuma
+    tag: "1"
+    skipIds: true
+    config: false
+    volumes:
+      - "{{ .Values.global.configRoot }}/uptime-kuma:/app/data"
+    ingress:
+      port: 3001
+    homepage:
+      group: Monitoring

@@ -109,6 +109,8 @@ type RenderOptions struct {
 	NoEnv    bool
 	// ShowOnly limits output to these templates, e.g. "templates/apps.yaml".
 	ShowOnly []string
+	// SubchartNotes also renders subcharts' NOTES.txt.
+	SubchartNotes bool
 	// Capabilities populates .Capabilities; nil uses DefaultCapabilities.
 	Capabilities map[string]interface{}
 	// Lookup backs the lookup function; nil makes lookup return empty maps.
@@ -151,6 +153,10 @@ func Render(o RenderOptions) (*Rendered, error) {
 	if err := c.ValidateValues(vals); err != nil {
 		return nil, err
 	}
+	// Drop disabled subcharts and coalesce the enabled ones' values under .Values.<name>.
+	if c, vals, err = chart.ProcessDependencies(c, vals); err != nil {
+		return nil, err
+	}
 	caps := o.Capabilities
 	if caps == nil {
 		caps = DefaultCapabilities()
@@ -169,7 +175,7 @@ func Render(o RenderOptions) (*Rendered, error) {
 		"Service": "composetpl",
 	}
 	res, err := engine.Render(c, vals, rel, engine.Options{
-		Strict: o.Strict, NoEnv: o.NoEnv, Capabilities: caps, Lookup: o.Lookup,
+		Strict: o.Strict, NoEnv: o.NoEnv, Capabilities: caps, Lookup: o.Lookup, SubchartNotes: o.SubchartNotes,
 	})
 	if err != nil {
 		return nil, err

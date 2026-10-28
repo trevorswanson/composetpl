@@ -1,0 +1,22 @@
+# Shared by every stack: global values are copied into each subchart and win
+# over the subcharts' own global defaults.
+global:
+  tz: America/Chicago
+  puid: 1000
+  pgid: 1000
+  domain: home.example.com
+  network: proxy
+  certResolver: letsencrypt
+  restart: unless-stopped
+  configRoot: /opt/appdata
+  mediaRoot: /mnt/media
+
+# Each subchart's values live under its name and override the subchart's defaults.
+media:
+  enabled: true
+  apps:
+    jellyfin:
+      enabled: true
+
+monitoring:
+  enabled: true

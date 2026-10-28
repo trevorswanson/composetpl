@@ -29,6 +29,8 @@ type Options struct {
 	// Lookup implements the lookup function. When nil, lookup returns an empty
 	// map, as Helm's does without a cluster (template, lint, --dry-run).
 	Lookup func(kind, name string) (map[string]interface{}, error)
+	// SubchartNotes also renders subcharts' NOTES.txt (helm --render-subchart-notes).
+	SubchartNotes bool
 }
 
 // Rendered is the output of one non-partial template.
@@ -40,7 +42,8 @@ type Rendered struct {
 // Result is the output of rendering a chart.
 type Result struct {
 	Templates []Rendered
-	// Notes is the rendered templates/NOTES.txt of the root chart, if any.
+	// Notes is the rendered templates/NOTES.txt of the root chart, followed by
+	// the subcharts' when Options.SubchartNotes is set.
 	Notes string
 }
 
@@ -58,7 +61,10 @@ func warnWrap(warn string) string {
 }
 
 // Render parses every template of c and its dependencies into one set, then renders
-// the root chart's non-partial templates and its NOTES.txt. release becomes .Release.
+// the non-partial templates and NOTES.txt of c and, recursively, of its application
+// (non-library) dependencies. Each chart sees its own .Chart, .Files and scoped
+// .Values (vals.<name> for a subchart, as prepared by chart.ProcessDependencies).
+// release becomes .Release.
 func Render(c *chart.Chart, vals map[string]interface{}, release map[string]interface{}, opts Options) (*Result, error) {
 	t := template.New("gotpl")
 	if opts.Strict {
@@ -76,11 +82,24 @@ func Render(c *chart.Chart, vals map[string]interface{}, release map[string]inte
 		}
 	}
 
-	files := Files(c.Files)
 	out := &Result{}
-	notesName := c.Metadata.Name + "/templates/NOTES.txt"
+	if err := renderChart(t, c, vals, release, opts, true, out); err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func renderChart(t *template.Template, c *chart.Chart, vals, release map[string]interface{}, opts Options, root bool, out *Result) error {
+	if vals == nil {
+		vals = map[string]interface{}{}
+	}
+	files := Files(c.Files)
 	for _, tpl := range c.Templates {
-		if tpl.IsPartial() && tpl.Name != notesName {
+		isNotes := tpl.Path == "templates/NOTES.txt"
+		if isNotes && !root && !opts.SubchartNotes {
+			continue
+		}
+		if tpl.IsPartial() && !isNotes {
 			continue
 		}
 		data := map[string]interface{}{
@@ -91,21 +110,35 @@ func Render(c *chart.Chart, vals map[string]interface{}, release map[string]inte
 			"Capabilities": opts.Capabilities,
 			"Template": map[string]interface{}{
 				"Name":     tpl.Name,
-				"BasePath": c.Metadata.Name + "/templates",
+				"BasePath": strings.TrimSuffix(tpl.Name, "/"+tpl.Path) + "/templates",
 			},
 		}
 		var buf strings.Builder
 		if err := t.ExecuteTemplate(&buf, tpl.Name, data); err != nil {
-			return nil, cleanupExecError(tpl.Name, err)
+			return cleanupExecError(tpl.Name, err)
 		}
 		content := strings.ReplaceAll(buf.String(), "<no value>", "")
-		if tpl.Name == notesName {
-			out.Notes = content
+		if isNotes {
+			if strings.TrimSpace(content) != "" {
+				if out.Notes != "" {
+					out.Notes = strings.TrimRight(out.Notes, "\n") + "\n\n"
+				}
+				out.Notes += content
+			}
 			continue
 		}
 		out.Templates = append(out.Templates, Rendered{Name: tpl.Name, Content: content})
 	}
-	return out, nil
+	for _, d := range c.Dependencies {
+		if d.IsLibrary() {
+			continue
+		}
+		sub, _ := vals[d.Metadata.Name].(map[string]interface{})
+		if err := renderChart(t, d, sub, release, opts, false, out); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func initFuncMap(t *template.Template, opts Options) {

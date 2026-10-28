@@ -46,10 +46,18 @@ func (md *Metadata) Validate() error {
 			return fmt.Errorf("version %q is not valid semver: %w", md.Version, err)
 		}
 	}
+	seen := map[string]bool{}
 	for _, d := range md.Dependencies {
 		if !nameRegexp.MatchString(d.Name) || strings.Contains(d.Name, "..") {
 			return fmt.Errorf("invalid dependency name %q", d.Name)
 		}
+		if d.Alias != "" && (!nameRegexp.MatchString(d.Alias) || strings.Contains(d.Alias, "..")) {
+			return fmt.Errorf("invalid alias %q for dependency %q", d.Alias, d.Name)
+		}
+		if seen[d.ValuesKey()] {
+			return fmt.Errorf("dependency %q is listed twice; give one an alias", d.ValuesKey())
+		}
+		seen[d.ValuesKey()] = true
 	}
 	return nil
 }
@@ -61,11 +69,34 @@ type Dependency struct {
 	Version string `json:"version,omitempty"`
 	// Repository is file://<path> or oci://<registry>/<repo>.
 	Repository string `json:"repository"`
+	// Condition lists comma-separated value paths; the first that is a boolean
+	// enables or disables the dependency.
+	Condition string `json:"condition,omitempty"`
+	// Tags enable the dependency when any of .Values.tags.<tag> is true.
+	Tags []string `json:"tags,omitempty"`
+	// Alias renames the dependency, so one chart can be used more than once.
+	Alias string `json:"alias,omitempty"`
+	// ImportValues copies a subchart's values into the parent: either a string
+	// naming a key under the subchart's "exports", or a {child, parent} map of paths.
+	ImportValues []interface{} `json:"import-values,omitempty"`
 }
 
-// Template is a file under templates/, named "<chart>/templates/<relpath>".
+// ValuesKey is the name the dependency goes by: its alias, or else its name.
+// Its values live under .Values.<ValuesKey>.
+func (d *Dependency) ValuesKey() string {
+	if d.Alias != "" {
+		return d.Alias
+	}
+	return d.Name
+}
+
+// Template is a file under templates/. Name is unique across the chart tree:
+// "<chart>/templates/<file>" for the root chart and
+// "<chart>/charts/<subchart>/templates/<file>" for dependencies, as in Helm.
 type Template struct {
 	Name string
+	// Path is the file's path within its own chart, e.g. "templates/apps.yaml".
+	Path string
 	Data []byte
 }
 
@@ -88,8 +119,39 @@ type Chart struct {
 	Templates []Template
 	// Files holds every non-template file (relative slash path -> contents), for .Files.
 	Files map[string][]byte
-	// Dependencies are library charts whose templates are parsed but never rendered.
+	// Dependencies are the loaded subcharts, in Chart.yaml order. Library charts
+	// only contribute defines; application charts also render their templates.
 	Dependencies []*Chart
+	// Spec is the parent's Chart.yaml entry for this chart (nil for the root chart).
+	Spec *Dependency
+}
+
+// IsLibrary reports whether the chart only provides defines.
+func (c *Chart) IsLibrary() bool { return c.Metadata.Type == "library" }
+
+// setPrefix names the chart's templates under prefix, and its dependencies'
+// under prefix/charts/<name>.
+func (c *Chart) setPrefix(prefix string) {
+	for i := range c.Templates {
+		c.Templates[i].Name = prefix + "/" + c.Templates[i].Path
+	}
+	for _, d := range c.Dependencies {
+		d.setPrefix(prefix + "/charts/" + d.Metadata.Name)
+	}
+}
+
+// clone deep-copies the chart tree's metadata, templates and dependencies; file
+// contents are shared, as they are never modified.
+func (c *Chart) clone() *Chart {
+	cp := *c
+	md := *c.Metadata
+	cp.Metadata = &md
+	cp.Templates = append([]Template(nil), c.Templates...)
+	cp.Dependencies = make([]*Chart, len(c.Dependencies))
+	for i, d := range c.Dependencies {
+		cp.Dependencies[i] = d.clone()
+	}
+	return &cp
 }
 
 // Resolver loads a dependency that is neither vendored under charts/ nor a
@@ -230,7 +292,7 @@ func fromFiles(files map[string][]byte, dir, ref string, o Options, stack []stri
 	for rel, data := range files {
 		switch {
 		case strings.HasPrefix(rel, "templates/"):
-			c.Templates = append(c.Templates, Template{Name: md.Name + "/" + rel, Data: data})
+			c.Templates = append(c.Templates, Template{Name: md.Name + "/" + rel, Path: rel, Data: data})
 		case strings.HasPrefix(rel, "charts/"):
 			entry := strings.SplitN(strings.TrimPrefix(rel, "charts/"), "/", 2)
 			if len(entry) == 2 {
@@ -255,8 +317,14 @@ func fromFiles(files map[string][]byte, dir, ref string, o Options, stack []stri
 		if err != nil {
 			return nil, fmt.Errorf("%s: dependency %q: %w", md.Name, dep.Name, err)
 		}
+		if dep.Alias != "" {
+			dc = dc.clone()
+			dc.Metadata.Name = dep.Alias
+		}
+		dc.Spec = dep
 		c.Dependencies = append(c.Dependencies, dc)
 	}
+	c.setPrefix(md.Name)
 	return c, nil
 }
 

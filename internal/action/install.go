@@ -20,6 +20,8 @@ type Install struct {
 	Description string
 	// ChartVersion is a semver constraint for oci:// charts.
 	ChartVersion string
+	// SubchartNotes also renders subcharts' NOTES.txt.
+	SubchartNotes bool
 	// ProjectDir overrides the compose project directory (default: the chart dir).
 	ProjectDir string
 }
@@ -46,7 +48,7 @@ func (i *Install) Run(ctx context.Context, name, chartPath string, userValues ma
 	}
 
 	ro, err := i.cfg.liveRenderOptions(ctx, RenderOptions{
-		ChartPath: chartPath, Version: i.ChartVersion, ReleaseName: name, Revision: revision, UserValues: userValues,
+		ChartPath: chartPath, Version: i.ChartVersion, SubchartNotes: i.SubchartNotes, ReleaseName: name, Revision: revision, UserValues: userValues,
 		Strict: i.Strict, NoEnv: i.NoEnv,
 	}, i.DryRun)
 	if err != nil {

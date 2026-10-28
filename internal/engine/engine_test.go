@@ -19,11 +19,11 @@ func testChart(tpls, libTpls map[string]string) *chart.Chart {
 		},
 	}
 	for name, src := range tpls {
-		c.Templates = append(c.Templates, chart.Template{Name: "app/templates/" + name, Data: []byte(src)})
+		c.Templates = append(c.Templates, chart.Template{Name: "app/templates/" + name, Path: "templates/" + name, Data: []byte(src)})
 	}
 	lib := &chart.Chart{Metadata: &chart.Metadata{Name: "lib", Type: "library"}}
 	for name, src := range libTpls {
-		lib.Templates = append(lib.Templates, chart.Template{Name: "lib/templates/" + name, Data: []byte(src)})
+		lib.Templates = append(lib.Templates, chart.Template{Name: "app/charts/lib/templates/" + name, Path: "templates/" + name, Data: []byte(src)})
 	}
 	c.Dependencies = []*chart.Chart{lib}
 	return c

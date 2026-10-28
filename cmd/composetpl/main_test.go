@@ -467,3 +467,57 @@ func must(t *testing.T, err error) {
 		t.Fatal(err)
 	}
 }
+
+const umbrellaChart = "../../examples/homelab/umbrella"
+
+func TestUmbrellaGolden(t *testing.T) {
+	golden(t, "homelab-umbrella.yaml", mustRun(t, "template", umbrellaChart))
+}
+
+func TestUmbrellaCLI(t *testing.T) {
+	out := mustRun(t, "template", umbrellaChart, "--set", "monitoring.enabled=false",
+		"--set", "media.apps.sonarr.enabled=false", "--set", "global.domain=lab.example.org")
+	expect(t, out, "name: homelab", "  radarr:", "Host(`radarr.lab.example.org`)")
+	for _, gone := range []string{"dozzle:", "uptime-kuma:", "  sonarr:"} {
+		if strings.Contains(out, gone) {
+			t.Errorf("%q should be disabled:\n%s", gone, out)
+		}
+	}
+
+	dir := t.TempDir()
+	mustRun(t, "template", umbrellaChart, "--output-dir", dir)
+	for _, f := range []string{"charts/media/apps.yaml", "charts/media/traefik.yaml", "charts/monitoring/apps.yaml"} {
+		if _, err := os.Stat(filepath.Join(dir, filepath.FromSlash(f))); err != nil {
+			t.Errorf("split output missing %s: %v", f, err)
+		}
+	}
+
+	useFakeDocker(t)
+	out = mustRun(t, "install", "homelab", umbrellaChart)
+	expect(t, out, "homelab (revision 1) runs:", "  - media", "  - monitoring")
+	if strings.Contains(out, "Monitoring:") {
+		t.Error("subchart notes need --render-subchart-notes")
+	}
+	expect(t, mustRun(t, "upgrade", "homelab", umbrellaChart, "--render-subchart-notes"),
+		"Monitoring:", "  - dozzle: https://dozzle.home.example.com", "homelab (revision 2) is up")
+	expect(t, mustRun(t, "get", "hooks", "homelab"), "# Hook: config-backup", "# Hook: homepage-smoke-test")
+	expect(t, mustRun(t, "get", "values", "homelab", "--all"), "monitoring:", "dozzle:", "tz: America/Chicago")
+}
+
+func TestUmbrellaServiceCollision(t *testing.T) {
+	root := t.TempDir()
+	for _, d := range []string{"common", "stack"} {
+		copyDir(t, filepath.Join("../../examples/homelab", d), filepath.Join(root, d))
+	}
+	writeFiles(t, filepath.Join(root, "twice"), map[string]string{
+		"Chart.yaml": "name: twice\nversion: 0.1.0\ndependencies:\n" +
+			"  - {name: media, alias: a, repository: file://../stack}\n" +
+			"  - {name: media, alias: b, repository: file://../stack, import-values: [missing]}\n",
+		"values.yaml": "b: {apps: {plex: {image: other/plex}}}\n",
+	})
+	_, err := run(t, "template", filepath.Join(root, "twice"))
+	if err == nil {
+		t.Fatal("two copies of the same stack should collide on service names")
+	}
+	expect(t, err.Error(), `conflict at "services.plex.image"`, "twice/charts/a/templates/apps.yaml", "twice/charts/b/templates/apps.yaml")
+}

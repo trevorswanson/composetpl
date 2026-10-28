@@ -21,11 +21,7 @@ func WriteSplit(dir string, rendered []engine.Rendered) ([]string, error) {
 		if _, err := ParseDocs(r); err != nil {
 			return written, err
 		}
-		rel := r.Name
-		if i := strings.Index(rel, "/templates/"); i >= 0 {
-			rel = rel[i+len("/templates/"):]
-		}
-		dst := filepath.Join(dir, filepath.FromSlash(rel))
+		dst := filepath.Join(dir, filepath.FromSlash(splitPath(r.Name)))
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return written, err
 		}
@@ -39,4 +35,21 @@ func WriteSplit(dir string, rendered []engine.Rendered) ([]string, error) {
 		written = append(written, dst)
 	}
 	return written, nil
+}
+
+// splitPath maps a template name to its output path: "<chart>/templates/a.yaml"
+// becomes "a.yaml" and "<chart>/charts/<sub>/templates/a.yaml" becomes
+// "charts/<sub>/a.yaml", so subcharts' files never collide with their parent's.
+func splitPath(name string) string {
+	parts := strings.Split(name, "/")
+	var out []string
+	i := 1
+	for i+1 < len(parts) && parts[i] == "charts" {
+		out = append(out, "charts", parts[i+1])
+		i += 2
+	}
+	if i < len(parts) && parts[i] == "templates" {
+		i++
+	}
+	return strings.Join(append(out, parts[i:]...), "/")
 }
