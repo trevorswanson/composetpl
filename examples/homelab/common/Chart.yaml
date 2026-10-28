@@ -1,0 +1,5 @@
+apiVersion: v2
+name: common
+description: Shared helpers for homelab compose stacks
+type: library
+version: 0.1.0

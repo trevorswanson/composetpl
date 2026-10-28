@@ -1,0 +1,3 @@
+networks:
+  {{ .Values.global.network }}:
+    name: {{ .Values.global.network }}

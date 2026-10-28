@@ -1,0 +1,25 @@
+{{- if .Values.traefik.enabled }}
+{{- $g := .Values.global }}
+services:
+  traefik:
+    image: {{ .Values.traefik.image }}:{{ .Values.traefik.tag }}
+    container_name: traefik
+    restart: {{ $g.restart }}
+    command:
+      {{- range .Files.Lines "files/traefik-args.txt" }}
+      {{- if . }}
+      - {{ . | quote }}
+      {{- end }}
+      {{- end }}
+      - "--certificatesresolvers.{{ $g.certResolver }}.acme.email={{ required "traefik.acmeEmail is required" .Values.traefik.acmeEmail }}"
+      - "--certificatesresolvers.{{ $g.certResolver }}.acme.storage=/letsencrypt/acme.json"
+      - "--certificatesresolvers.{{ $g.certResolver }}.acme.tlschallenge=true"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - {{ printf "%s/traefik/letsencrypt:/letsencrypt" $g.configRoot | quote }}
+    networks:
+      - {{ $g.network }}
+{{- end }}
