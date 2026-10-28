@@ -33,6 +33,8 @@ type Configuration struct {
 	Now func() time.Time
 	// Registry pulls oci:// charts; nil uses a default client.
 	Registry *registry.Client
+	// HookSleep waits between hook retries; nil sleeps for real (tests skip the wait).
+	HookSleep func(ctx context.Context, d time.Duration) error
 
 	caps map[string]interface{}
 }
@@ -95,6 +97,8 @@ type RenderOptions struct {
 	Version string
 	// Registry pulls oci:// charts; nil uses a default client.
 	Registry *registry.Client
+	// HookSleep waits between hook retries; nil sleeps for real (tests skip the wait).
+	HookSleep func(ctx context.Context, d time.Duration) error
 	// Context bounds registry access; nil means context.Background().
 	Context     context.Context
 	ReleaseName string
@@ -278,7 +282,7 @@ func (c *Configuration) runHooks(ctx context.Context, rel *release.Release, even
 	if skip {
 		return nil
 	}
-	r := &hooks.Runner{Compose: c.Compose, Output: c.Log, Log: c.Log, Timeout: timeout}
+	r := &hooks.Runner{Compose: c.Compose, Output: c.Log, Log: c.Log, Timeout: timeout, Sleep: c.HookSleep}
 	_, err := r.Run(ctx, rel, event)
 	return err
 }

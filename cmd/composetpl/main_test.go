@@ -2,11 +2,13 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"flag"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -118,7 +120,8 @@ func useFakeDocker(t *testing.T) *composetest.Fake {
 	fake := composetest.New()
 	store := storage.NewLocal(t.TempDir())
 	testConfig = func(cmd *cobra.Command) (*action.Configuration, error) {
-		return &action.Configuration{Store: store, Compose: fake, Log: cmd.ErrOrStderr()}, nil
+		return &action.Configuration{Store: store, Compose: fake, Log: cmd.ErrOrStderr(),
+			HookSleep: func(context.Context, time.Duration) error { return nil }}, nil
 	}
 	t.Cleanup(func() { testConfig = nil })
 	return fake
@@ -291,7 +294,7 @@ func TestHooksCLI(t *testing.T) {
 
 	fake.RunOutput = "Connecting to homepage:3000\n"
 	out := mustRun(t, "test", "media", "--logs")
-	expect(t, out, "TEST SUITE:     homepage-smoke-test", "Phase:          Succeeded", "Connecting to homepage:3000")
+	expect(t, out, "TEST SUITE:     homepage-smoke-test", "Attempts:       1", "Phase:          Succeeded", "Connecting to homepage:3000")
 	expect(t, fake.CallLog(), "run media homepage-smoke-test name=media-hook-homepage-smoke-test nodeps=true")
 
 	fake.FailRun = "homepage-smoke-test"

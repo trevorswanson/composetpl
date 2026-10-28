@@ -18,6 +18,7 @@ type TestResult struct {
 	Started  time.Time `json:"started"`
 	Finished time.Time `json:"finished"`
 	Passed   bool      `json:"passed"`
+	Attempts int       `json:"attempts"`
 	Error    string    `json:"error,omitempty"`
 	// Logs holds the test container's output.
 	Logs string `json:"logs,omitempty"`
@@ -53,11 +54,11 @@ func (t *ReleaseTesting) Run(ctx context.Context, name string) (*release.Release
 			continue
 		}
 		var logs bytes.Buffer
-		r := &hooks.Runner{Compose: t.cfg.Compose, Output: &logs, Log: io.Discard, Timeout: t.Timeout}
+		r := &hooks.Runner{Compose: t.cfg.Compose, Output: &logs, Log: io.Discard, Timeout: t.Timeout, Sleep: t.cfg.HookSleep}
 		res, err := r.Run(ctx, rel, hooks.Test, h.Name)
 		tr := TestResult{Name: h.Name, Passed: err == nil, Logs: logs.String()}
 		if len(res) > 0 {
-			tr.Started, tr.Finished = res[0].Started, res[0].Finished
+			tr.Started, tr.Finished, tr.Attempts = res[0].Started, res[0].Finished, res[0].Attempts
 		}
 		if err != nil {
 			tr.Error = err.Error()

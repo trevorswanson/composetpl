@@ -54,6 +54,12 @@ type Hook struct {
 	Weight         int      `json:"weight,omitempty"`
 	DeletePolicies []string `json:"deletePolicies,omitempty"`
 	NoDeps         bool     `json:"noDeps,omitempty"`
+	// Retries is how many times a failed hook is run again.
+	Retries int `json:"retries,omitempty"`
+	// Backoff is the delay before the first retry (Go duration, doubling each time).
+	Backoff string `json:"backoff,omitempty"`
+	// Timeout bounds each attempt (Go duration), overriding the command's --timeout.
+	Timeout string `json:"timeout,omitempty"`
 	// Service is the service definition as YAML, without the x-composetpl key.
 	Service string `json:"service"`
 }

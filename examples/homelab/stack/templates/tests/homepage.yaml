@@ -9,4 +9,8 @@ services:
     x-composetpl:
       hook: test
       no-deps: true
+      # homepage can take a few seconds to answer after a restart.
+      retries: 3
+      backoff: 5s
+      timeout: 1m
 {{- end }}
