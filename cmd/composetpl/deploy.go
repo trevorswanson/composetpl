@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -168,6 +169,7 @@ kept unless --volumes is given.`,
 			for _, name := range args {
 				a := action.NewUninstall(cfg)
 				a.KeepHistory, a.Volumes, a.RemoveImages, a.DryRun = u.KeepHistory, u.Volumes, u.RemoveImages, u.DryRun
+				a.NoHooks, a.Timeout = u.NoHooks, u.Timeout
 				if _, err := a.Run(ctx(cmd), name); err != nil {
 					return err
 				}
@@ -184,6 +186,8 @@ kept unless --volumes is given.`,
 	cmd.Flags().BoolVar(&u.Volumes, "volumes", false, "also remove named volumes declared by the release")
 	cmd.Flags().StringVar(&u.RemoveImages, "rmi", "", "also remove images: local or all")
 	cmd.Flags().BoolVar(&u.DryRun, "dry-run", false, "show what would be uninstalled")
+	cmd.Flags().BoolVar(&u.NoHooks, "no-hooks", false, "skip pre-delete and post-delete hooks")
+	cmd.Flags().DurationVar(&u.Timeout, "timeout", 5*time.Minute, "how long each delete hook may run")
 	return cmd
 }
 

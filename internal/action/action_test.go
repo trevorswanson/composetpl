@@ -347,3 +347,82 @@ func TestUninstallListStatus(t *testing.T) {
 		t.Errorf("uninstall should purge history: %s", e.statuses())
 	}
 }
+
+func (e *env) addHooks() {
+	e.t.Helper()
+	p := filepath.Join(e.chart, "templates", "hooks.yaml")
+	src := `services:
+  migrate:
+    image: app-migrate:{{ .Values.tag }}
+    x-composetpl: {hook: [pre-install, pre-upgrade], weight: -1}
+  notify:
+    image: curl
+    x-composetpl: {hook: [post-install, post-upgrade, post-rollback, pre-delete, post-delete]}
+  smoke:
+    image: busybox
+    x-composetpl: {hook: test, no-deps: true}
+`
+	if err := os.WriteFile(p, []byte(src), 0o644); err != nil {
+		e.t.Fatal(err)
+	}
+}
+
+func TestHooksLifecycle(t *testing.T) {
+	e := newEnv(t)
+	e.addHooks()
+	ctx := context.Background()
+
+	rel, err := e.install(nil)
+	must(t, err)
+	if len(rel.Hooks) != 3 || strings.Contains(rel.Manifest, "migrate") {
+		t.Fatalf("hooks should be stored apart from the manifest: %d hooks\n%s", len(rel.Hooks), rel.Manifest)
+	}
+	want := "config myapp;rm myapp-hook-migrate;run myapp migrate name=myapp-hook-migrate nodeps=false;" +
+		"up myapp wait=false;rm myapp-hook-notify;run myapp notify name=myapp-hook-notify nodeps=false"
+	if e.fake.CallLog() != want {
+		t.Errorf("install calls:\n%s\nwant\n%s", e.fake.CallLog(), want)
+	}
+
+	// A failing pre-upgrade hook stops the upgrade before compose up.
+	e.fake.Calls, e.fake.FailRun = nil, "migrate"
+	_, err = e.upgrade(nil, map[string]interface{}{"tag": "2"})
+	if err == nil || !strings.Contains(err.Error(), `pre-upgrade hook "migrate" failed`) {
+		t.Fatalf("got %v", err)
+	}
+	if strings.Contains(e.fake.CallLog(), "up myapp") || e.statuses() != "1:deployed 2:failed" {
+		t.Errorf("calls=%s history=%s", e.fake.CallLog(), e.statuses())
+	}
+
+	// --no-hooks skips them.
+	e.fake.Calls = nil
+	_, err = e.upgrade(func(u *Upgrade) { u.NoHooks = true }, map[string]interface{}{"tag": "2"})
+	must(t, err)
+	if strings.Contains(e.fake.CallLog(), "run ") {
+		t.Errorf("--no-hooks ran hooks: %s", e.fake.CallLog())
+	}
+	e.fake.FailRun = ""
+
+	// Tests run against the deployed revision.
+	e.fake.RunOutput = "ok\n"
+	_, results, err := NewReleaseTesting(e.cfg).Run(ctx, "myapp")
+	must(t, err)
+	if len(results) != 1 || !results[0].Passed || results[0].Logs != "ok\n" {
+		t.Errorf("test results = %+v", results)
+	}
+	e.fake.FailRun = "smoke"
+	_, results, err = NewReleaseTesting(e.cfg).Run(ctx, "myapp")
+	if err == nil || len(results) != 1 || results[0].Passed {
+		t.Errorf("failing test: err=%v results=%+v", err, results)
+	}
+	e.fake.FailRun = ""
+
+	// Uninstall runs pre-delete, down, post-delete, then down again to clean up.
+	e.fake.Calls = nil
+	_, err = NewUninstall(e.cfg).Run(ctx, "myapp")
+	must(t, err)
+	want = "rm myapp-hook-notify;run myapp notify name=myapp-hook-notify nodeps=false;down myapp volumes=false;" +
+		"rm myapp-hook-notify;run myapp notify name=myapp-hook-notify nodeps=false;down myapp volumes=false"
+	if e.fake.CallLog() != want {
+		t.Errorf("uninstall calls:\n%s\nwant\n%s", e.fake.CallLog(), want)
+	}
+}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"composetpl/internal/hooks"
 	"composetpl/internal/release"
 	"composetpl/internal/values"
 )
@@ -87,7 +88,13 @@ func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues ma
 	if err := u.cfg.Store.Save(rel); err != nil {
 		return nil, err
 	}
+	if err := u.cfg.runHooks(ctx, rel, hooks.PreUpgrade, u.Timeout, u.NoHooks); err != nil {
+		return rel, u.failed(ctx, rel, current, err)
+	}
 	if err := u.cfg.up(ctx, rel, u.DeployOptions); err != nil {
+		return rel, u.failed(ctx, rel, current, err)
+	}
+	if err := u.cfg.runHooks(ctx, rel, hooks.PostUpgrade, u.Timeout, u.NoHooks); err != nil {
 		return rel, u.failed(ctx, rel, current, err)
 	}
 	desc := u.Description

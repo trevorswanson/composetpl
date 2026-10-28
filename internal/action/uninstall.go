@@ -3,8 +3,10 @@ package action
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"composetpl/internal/compose"
+	"composetpl/internal/hooks"
 	"composetpl/internal/release"
 )
 
@@ -16,6 +18,9 @@ type Uninstall struct {
 	Volumes      bool
 	RemoveImages string
 	DryRun       bool
+	NoHooks      bool
+	// Timeout bounds each delete hook.
+	Timeout time.Duration
 }
 
 // NewUninstall returns an Uninstall action.
@@ -51,8 +56,21 @@ func (u *Uninstall) Run(ctx context.Context, name string) (*release.Release, err
 	if u.DryRun {
 		return target, nil
 	}
-	if err := u.cfg.Compose.Down(ctx, project(target), compose.DownOptions{Volumes: u.Volumes, RemoveImages: u.RemoveImages}); err != nil {
+	if err := u.cfg.runHooks(ctx, target, hooks.PreDelete, u.Timeout, u.NoHooks); err != nil {
 		return nil, err
+	}
+	down := compose.DownOptions{Volumes: u.Volumes, RemoveImages: u.RemoveImages}
+	if err := u.cfg.Compose.Down(ctx, project(target), down); err != nil {
+		return nil, err
+	}
+	if !u.NoHooks && len(hooks.For(target, hooks.PostDelete)) > 0 {
+		if err := u.cfg.runHooks(ctx, target, hooks.PostDelete, u.Timeout, false); err != nil {
+			return nil, err
+		}
+		// Post-delete hooks recreate the project network; clean up after them.
+		if err := u.cfg.Compose.Down(ctx, project(target), compose.DownOptions{}); err != nil {
+			return nil, err
+		}
 	}
 	if !u.KeepHistory {
 		return latest, u.cfg.Store.Delete(h...)

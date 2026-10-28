@@ -1,0 +1,9 @@
+services:
+  homepage-smoke-test:
+    image: busybox:1.37
+    command: ["wget", "-q", "-O", "/dev/null", "http://homepage:3000"]
+    networks:
+      - proxy
+    x-composetpl:
+      hook: test
+      no-deps: true

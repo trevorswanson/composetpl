@@ -1,0 +1,23 @@
+{{- /*
+A pre-upgrade hook: archive the app config directory before every upgrade.
+Hook services are removed from the deployed manifest and run to completion with
+`docker compose run` (see x-composetpl).
+*/ -}}
+{{- if .Values.backup.enabled }}
+services:
+  config-backup:
+    image: {{ .Values.backup.image }}
+    command:
+      - sh
+      - -c
+      # $$ escapes compose's own ${VAR} interpolation.
+      - tar czf /backup/appdata-$$(date +%Y%m%d-%H%M%S).tgz -C /appdata .
+    volumes:
+      - {{ printf "%s:/appdata:ro" .Values.global.configRoot | quote }}
+      - {{ printf "%s:/backup" .Values.backup.destination | quote }}
+    network_mode: none
+    x-composetpl:
+      hook: [pre-upgrade, pre-rollback]
+      weight: -10
+      delete-policy: [before-hook-creation, hook-succeeded]
+{{- end }}

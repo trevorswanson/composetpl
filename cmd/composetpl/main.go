@@ -42,6 +42,7 @@ upgrade, rollback, history and uninstall, backed by docker compose.`,
 		newHistoryCmd(g),
 		newGetCmd(g),
 		newDiffCmd(g),
+		newTestCmd(g),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print the version",

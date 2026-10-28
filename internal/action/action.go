@@ -15,6 +15,7 @@ import (
 	"composetpl/internal/chart"
 	"composetpl/internal/compose"
 	"composetpl/internal/engine"
+	"composetpl/internal/hooks"
 	"composetpl/internal/output"
 	"composetpl/internal/release"
 	"composetpl/internal/storage"
@@ -192,6 +193,10 @@ func (c *Configuration) releaseFrom(r *Rendered, name string, revision int, conf
 	if err != nil {
 		return nil, err
 	}
+	hks, err := hooks.Extract(root)
+	if err != nil {
+		return nil, err
+	}
 	if prev := output.SetName(root, name); prev != "" && prev != name {
 		c.warnf("the chart sets compose project name %q; using the release name %q instead", prev, name)
 	}
@@ -215,6 +220,7 @@ func (c *Configuration) releaseFrom(r *Rendered, name string, revision int, conf
 		Config:        config,
 		Values:        r.Values,
 		Manifest:      string(manifest),
+		Hooks:         hks,
 		Notes:         r.Notes,
 		ProjectDir:    projectDir,
 		FirstDeployed: now,
@@ -232,6 +238,18 @@ type DeployOptions struct {
 	Timeout       time.Duration
 	Pull          string
 	ForceRecreate bool
+	// NoHooks skips lifecycle hooks (helm --no-hooks).
+	NoHooks bool
+}
+
+// runHooks runs rel's hooks for event, streaming their output to the log.
+func (c *Configuration) runHooks(ctx context.Context, rel *release.Release, event string, timeout time.Duration, skip bool) error {
+	if skip {
+		return nil
+	}
+	r := &hooks.Runner{Compose: c.Compose, Output: c.Log, Log: c.Log, Timeout: timeout}
+	_, err := r.Run(ctx, rel, event)
+	return err
 }
 
 func (c *Configuration) up(ctx context.Context, r *release.Release, o DeployOptions) error {

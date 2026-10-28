@@ -15,10 +15,11 @@ var knownTopLevel = map[string]bool{
 	"configs": true, "secrets": true, "include": true, "models": true,
 }
 
-// Result holds lint findings. Errors fail the lint; warnings do not.
+// Result holds lint findings. Errors fail the lint; warnings and infos do not.
 type Result struct {
 	Errors   []string
 	Warnings []string
+	Infos    []string
 }
 
 // Check validates the top-level keys and services of a merged compose mapping.

@@ -1,0 +1,12 @@
+{{- /* `composetpl test media` runs this against the deployed release. */ -}}
+{{- if .Values.apps.homepage.enabled }}
+services:
+  homepage-smoke-test:
+    image: {{ .Values.backup.image }}
+    command: ["wget", "-q", "-O", "/dev/null", "http://homepage:{{ .Values.apps.homepage.ingress.port }}"]
+    networks:
+      - {{ .Values.global.network }}
+    x-composetpl:
+      hook: test
+      no-deps: true
+{{- end }}

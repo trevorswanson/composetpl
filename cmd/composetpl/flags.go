@@ -177,6 +177,7 @@ func (f *deployFlags) register(fs *pflag.FlagSet) {
 	fs.DurationVar(&f.Timeout, "timeout", 5*time.Minute, "how long --wait waits")
 	fs.StringVar(&f.Pull, "pull", "", "image pull policy: always, missing or never (default: compose's)")
 	fs.BoolVar(&f.ForceRecreate, "force", false, "recreate containers even if their configuration is unchanged")
+	fs.BoolVar(&f.NoHooks, "no-hooks", false, "skip lifecycle hooks")
 }
 
 func ctx(cmd *cobra.Command) context.Context {

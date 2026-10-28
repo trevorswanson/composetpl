@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"composetpl/internal/compose"
+	"composetpl/internal/hooks"
 	"composetpl/internal/release"
 )
 
@@ -69,7 +70,13 @@ func (i *Install) Run(ctx context.Context, name, chartPath string, userValues ma
 	if err := i.cfg.Store.Save(rel); err != nil {
 		return nil, err
 	}
+	if err := i.cfg.runHooks(ctx, rel, hooks.PreInstall, i.Timeout, i.NoHooks); err != nil {
+		return rel, i.failed(ctx, rel, err)
+	}
 	if err := i.cfg.up(ctx, rel, i.DeployOptions); err != nil {
+		return rel, i.failed(ctx, rel, err)
+	}
+	if err := i.cfg.runHooks(ctx, rel, hooks.PostInstall, i.Timeout, i.NoHooks); err != nil {
 		return rel, i.failed(ctx, rel, err)
 	}
 	desc := i.Description

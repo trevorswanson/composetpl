@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 
+	"composetpl/internal/hooks"
 	"composetpl/internal/release"
 )
 
@@ -54,7 +55,13 @@ func (r *Rollback) Run(ctx context.Context, name string) (*release.Release, erro
 	if err := r.cfg.Store.Save(&rel); err != nil {
 		return nil, err
 	}
+	if err := r.cfg.runHooks(ctx, &rel, hooks.PreRollback, r.Timeout, r.NoHooks); err != nil {
+		return &rel, r.cfg.markFailed(&rel, err)
+	}
 	if err := r.cfg.up(ctx, &rel, r.DeployOptions); err != nil {
+		return &rel, r.cfg.markFailed(&rel, err)
+	}
+	if err := r.cfg.runHooks(ctx, &rel, hooks.PostRollback, r.Timeout, r.NoHooks); err != nil {
 		return &rel, r.cfg.markFailed(&rel, err)
 	}
 	if err := r.cfg.markDeployed(&rel, h, rel.Description); err != nil {

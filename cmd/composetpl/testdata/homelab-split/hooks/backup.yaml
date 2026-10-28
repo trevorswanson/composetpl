@@ -1,0 +1,16 @@
+services:
+  config-backup:
+    image: busybox:1.37
+    command:
+      - sh
+      - -c
+      # $$ escapes compose's own ${VAR} interpolation.
+      - tar czf /backup/appdata-$$(date +%Y%m%d-%H%M%S).tgz -C /appdata .
+    volumes:
+      - "/opt/appdata:/appdata:ro"
+      - "/opt/backups:/backup"
+    network_mode: none
+    x-composetpl:
+      hook: [pre-upgrade, pre-rollback]
+      weight: -10
+      delete-policy: [before-hook-creation, hook-succeeded]

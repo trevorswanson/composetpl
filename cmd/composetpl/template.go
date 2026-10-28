@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"composetpl/internal/action"
+	"composetpl/internal/hooks"
 	"composetpl/internal/lint"
 	"composetpl/internal/output"
 )
@@ -51,9 +52,10 @@ func (f *templateFlags) releaseName(r *action.Rendered) string {
 
 func newTemplateCmd() *cobra.Command {
 	var (
-		f         templateFlags
-		outFile   string
-		outputDir string
+		f            templateFlags
+		outFile      string
+		outputDir    string
+		includeHooks bool
 	)
 	cmd := &cobra.Command{
 		Use:   "template CHART",
@@ -86,6 +88,13 @@ to stdout (or --output). With --output-dir each template is written to its own f
 				f.printDebug(cmd.ErrOrStderr(), err)
 				return err
 			}
+			if !includeHooks {
+				// Hook services only make sense to composetpl; keep them out of
+				// output meant for `docker compose up`.
+				if _, err := hooks.Extract(root); err != nil {
+					return err
+				}
+			}
 			output.SetDefaultName(root, f.releaseName(r))
 			doc, err := output.Encode(root)
 			if err != nil {
@@ -100,7 +109,8 @@ to stdout (or --output). With --output-dir each template is written to its own f
 	}
 	f.register(cmd)
 	cmd.Flags().StringVarP(&outFile, "output", "o", "", "write the merged compose file here instead of stdout")
-	cmd.Flags().StringVar(&outputDir, "output-dir", "", "write one file per template into this directory")
+	cmd.Flags().StringVar(&outputDir, "output-dir", "", "write one file per template into this directory (raw, hooks included)")
+	cmd.Flags().BoolVar(&includeHooks, "include-hooks", false, "keep hook services (x-composetpl) in the merged output")
 	return cmd
 }
 
@@ -123,7 +133,15 @@ func newLintCmd() *cobra.Command {
 			name := r.Chart.Metadata.Name
 			output.SetDefaultName(root, f.releaseName(r))
 			res := lint.Check(root)
+			if hks, err := hooks.Extract(root); err != nil {
+				res.Errors = append(res.Errors, err.Error())
+			} else if len(hks) > 0 {
+				res.Infos = append(res.Infos, fmt.Sprintf("%d hook service(s)", len(hks)))
+			}
 			out := cmd.OutOrStdout()
+			for _, i := range res.Infos {
+				fmt.Fprintln(out, "[INFO]", i)
+			}
 			for _, w := range res.Warnings {
 				fmt.Fprintln(out, "[WARNING]", w)
 			}

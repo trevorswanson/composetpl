@@ -72,3 +72,9 @@ apps:
     extra:
       depends_on:
         - traefik
+
+# Runs as a pre-upgrade/pre-rollback hook (templates/hooks/backup.yaml).
+backup:
+  enabled: true
+  image: busybox:1.37
+  destination: /opt/backups

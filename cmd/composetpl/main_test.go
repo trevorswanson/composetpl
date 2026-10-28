@@ -78,7 +78,7 @@ func TestTemplateSplitGolden(t *testing.T) {
 	if _, err := run(t, "template", exampleChart, "--output-dir", dir); err != nil {
 		t.Fatal(err)
 	}
-	for _, f := range []string{"apps.yaml", "networks.yaml", "traefik.yaml"} {
+	for _, f := range []string{"apps.yaml", "networks.yaml", "traefik.yaml", "hooks/backup.yaml", "tests/homepage.yaml"} {
 		got, err := os.ReadFile(filepath.Join(dir, f))
 		if err != nil {
 			t.Fatal(err)
@@ -269,4 +269,33 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+func TestHooksCLI(t *testing.T) {
+	fake := useFakeDocker(t)
+	mustRun(t, "install", "media", exampleChart)
+	if strings.Contains(fake.CallLog(), "config-backup") {
+		t.Error("pre-upgrade backup must not run on install")
+	}
+	expect(t, mustRun(t, "get", "hooks", "media"),
+		"# Hook: config-backup (pre-upgrade,pre-rollback, weight -10)", "# Hook: homepage-smoke-test (test, weight 0)")
+	if strings.Contains(mustRun(t, "get", "manifest", "media"), "config-backup") {
+		t.Error("hooks must not be in the deployed manifest")
+	}
+
+	fake.Calls = nil
+	mustRun(t, "upgrade", "media", exampleChart, "--set", "apps.plex.enabled=false")
+	expect(t, fake.CallLog(), "run media config-backup name=media-hook-config-backup", "rm media-hook-config-backup;up media")
+
+	fake.RunOutput = "Connecting to homepage:3000\n"
+	out := mustRun(t, "test", "media", "--logs")
+	expect(t, out, "TEST SUITE:     homepage-smoke-test", "Phase:          Succeeded", "Connecting to homepage:3000")
+	expect(t, fake.CallLog(), "run media homepage-smoke-test name=media-hook-homepage-smoke-test nodeps=true")
+
+	fake.FailRun = "homepage-smoke-test"
+	out, err := run(t, "test", "media")
+	if err == nil {
+		t.Error("expected failing test")
+	}
+	expect(t, out, "Phase:          Failed")
 }
