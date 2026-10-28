@@ -63,8 +63,8 @@ golangci-lint run ./...                                           # lint and for
 
 Some guidelines:
 - **Unit tests don't need Docker.**
-  - Release logic is tested with the fake compose runner in `internal/compose/composetest`.
-  - OCI code is tested with the in-memory registry in `internal/registry/registrytest`.
+  - Release logic is tested with the fake compose runner in `pkg/compose/composetest`.
+  - OCI code is tested with the in-memory registry in `pkg/registry/registrytest`.
   - CLI behaviour is tested end to end through cobra in `cmd/composetpl/main_test.go`.
 - **Golden files** in `cmd/composetpl/testdata` capture the rendered example charts. If you change rendering on
   purpose, regenerate them with `-update`, and check that the diff is what you meant.

@@ -12,11 +12,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/trevorswanson/composetpl/internal/action"
-	"github.com/trevorswanson/composetpl/internal/chart"
-	"github.com/trevorswanson/composetpl/internal/compose/composetest"
-	"github.com/trevorswanson/composetpl/internal/registry/registrytest"
-	"github.com/trevorswanson/composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/pkg/action"
+	"github.com/trevorswanson/composetpl/pkg/chart"
+	"github.com/trevorswanson/composetpl/pkg/compose/composetest"
+	"github.com/trevorswanson/composetpl/pkg/registry/registrytest"
+	"github.com/trevorswanson/composetpl/pkg/storage"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")
@@ -170,6 +170,22 @@ func TestReleaseLifecycleCLI(t *testing.T) {
 	expect(t, mustRun(t, "list"), "NAME", "media", "media-0.1.0", "2026.10", "running(1)")
 	expect(t, mustRun(t, "list", "-o", "yaml"), "name: media", "live: running(1)")
 
+	expect(t, mustRun(t, "repair", "media"), `Release "media" matches revision 2.`)
+	deployed := fake.Running["media"]
+	fake.Running["media"] = "services: {web: {image: hacked}}\n"
+	out = mustRun(t, "repair", "media", "--dry-run")
+	expect(t, out, "SERVICE", "web", "changed", "media-web-1")
+	if strings.Contains(out, "repaired") || fake.Running["media"] == deployed {
+		t.Error("repair --dry-run should not redeploy")
+	}
+	expect(t, mustRun(t, "repair", "media", "-o", "json"), `"reason": "changed"`, `"repaired": true`, `"revision": 2`)
+	if fake.Running["media"] != deployed {
+		t.Error("repair should redeploy revision 2's manifest")
+	}
+	if strings.Contains(mustRun(t, "history", "media", "-o", "json"), `"revision": 3`) {
+		t.Error("repair should not record a revision")
+	}
+
 	out = mustRun(t, "upgrade", "media", exampleChart, "--dry-run", "--set", "apps.jellyfin.enabled=true")
 	expect(t, out, "MANIFEST:", "jellyfin:")
 	expect(t, mustRun(t, "history", "media", "-o", "json"), `"revision": 2`)
@@ -190,6 +206,32 @@ func TestReleaseLifecycleCLI(t *testing.T) {
 	expect(t, mustRun(t, "uninstall", "media"), "uninstalled")
 	if _, err := run(t, "status", "media"); err == nil {
 		t.Error("status after purge should fail")
+	}
+}
+
+func TestLabelsCLI(t *testing.T) {
+	useFakeDocker(t)
+	mustRun(t, "install", "media", exampleChart, "--labels", "managed-by=composecd,composecd/app=media")
+	mustRun(t, "install", "tools", exampleChart)
+	expect(t, mustRun(t, "get", "metadata", "media"), "LABELS:", "  composecd/app=media", "  managed-by=composecd")
+	expect(t, mustRun(t, "get", "metadata", "media", "-o", "json"), `"managed-by": "composecd"`)
+	if got := mustRun(t, "list", "-q", "-l", "managed-by=composecd"); strings.TrimSpace(got) != "media" {
+		t.Errorf("list -l: %q", got)
+	}
+	if got := mustRun(t, "list", "-q", "-l", "!managed-by"); strings.TrimSpace(got) != "tools" {
+		t.Errorf("list -l !: %q", got)
+	}
+
+	out := mustRun(t, "upgrade", "media", exampleChart, "--labels", "managed-by=")
+	expect(t, out, `WARNING: release "media" is managed by composecd`)
+	if strings.Contains(mustRun(t, "get", "metadata", "media"), "managed-by") {
+		t.Error("an empty --labels value should remove the label")
+	}
+	if out := mustRun(t, "upgrade", "media", exampleChart); strings.Contains(out, "WARNING") {
+		t.Errorf("unmanaged release warned: %s", out)
+	}
+	if _, err := run(t, "install", "bad", exampleChart, "--labels", "a b=c"); err == nil {
+		t.Error("invalid label key should fail")
 	}
 }
 

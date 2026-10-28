@@ -163,8 +163,9 @@ Compose recreates only the containers whose configuration changed.
 | `install NAME CHART` | `--wait`, `--timeout`, `--atomic` (tear down on failure), `--dry-run`, `--pull`, `--force`, `--no-hooks`, `--project-directory` |
 | `upgrade NAME CHART` | `-i/--install`, `--reuse-values`, `--reset-values`, `--reset-then-reuse-values`, `--history-max` (default 10), `--atomic` (roll back on failure). With no `-f`/`--set`, the previous values are reused, as in Helm. |
 | `rollback NAME [REV]` | Redeploys an earlier revision as a new one. Also recovers a release stuck in a `pending-*` state. |
+| `repair NAME` | Recreates containers that were removed, stopped or changed outside composetpl, from the deployed revision. Records no revision and runs no hooks. `--dry-run` only reports the drift. |
 | `uninstall NAME...` | `docker compose down`; `--keep-history`, `--volumes`, `--rmi` |
-| `list` | `-a`, `--deployed`, `--failed`, `--pending`, `--superseded`, `--uninstalled`, `-f REGEX`, `-q`; shows live `running(N)` state |
+| `list` | `-a`, `--deployed`, `--failed`, `--pending`, `--superseded`, `--uninstalled`, `-f REGEX`, `-l SELECTOR`, `-q`; shows live `running(N)` state |
 | `status NAME` | Revision, containers (health, state), NOTES |
 | `history NAME` | Every revision with status and description |
 | `get values\|manifest\|notes\|hooks\|metadata\|all NAME` | `--revision`; `values --all` shows the computed values |
@@ -172,6 +173,30 @@ Compose recreates only the containers whose configuration changed.
 | `test NAME` | Runs the release's `test` hooks; `--logs`, `--filter` |
 
 Every listing command takes `-o table|json|yaml`.
+
+### Labels
+
+`install`, `upgrade` and `rollback` take `--labels k=v,...`, recorded on the revision like Helm's release labels.
+`upgrade` and `rollback` merge them over the existing labels, and an empty value (`--labels k=`) removes one.
+`list -l` filters by them: `k=v`, `k!=v`, `k` or `!k`, comma-separated. `get metadata` shows them.
+
+A release labelled `managed-by=<tool>` is managed by another tool, such as a GitOps controller. `upgrade`,
+`rollback` and `uninstall` still work on it, but print a warning, since that tool may revert the change.
+
+### Drift and repair
+
+Compose stores a hash of each service's configuration on the containers it creates. `repair` compares those
+hashes, and the containers' state, with the deployed revision:
+
+| Drift | Meaning |
+| --- | --- |
+| `missing` | The service has no container. |
+| `changed` | A container was created from a different configuration. |
+| `stopped` | A container exists but isn't running. |
+| `orphaned` | A container belongs to a service the revision doesn't have. |
+
+It then runs `docker compose up` on the deployed manifest. Compose recreates only what differs. `--force`
+recreates everything.
 
 ### Where releases are stored
 
@@ -287,6 +312,28 @@ composetpl diff upgrade media examples/homelab/stack --set apps.plex.enabled=fal
 composetpl test media --logs
 composetpl install homelab examples/homelab/umbrella --set monitoring.enabled=false
 ```
+
+## Go API
+
+The packages under `pkg/` are composetpl's Go API, in the way Helm exposes `pkg/action`. Tools that build on
+composetpl import them rather than running the CLI:
+
+| Package | Contents |
+| --- | --- |
+| `pkg/action` | `Install`, `Upgrade`, `Rollback`, `Repair`, `Uninstall`, `List`, `Status`, `ReleaseTesting`, diffs, `Render` |
+| `pkg/chart`, `pkg/engine`, `pkg/values` | Loading, rendering and values |
+| `pkg/compose` | The `docker compose` runner. `compose.CLI.Env` gives each instance its own environment. |
+| `pkg/storage`, `pkg/release` | Release records, labels and storage drivers |
+| `pkg/hooks`, `pkg/diff`, `pkg/output`, `pkg/registry` | Hooks, manifest diffs, merging and OCI |
+| `pkg/compose/composetest`, `pkg/registry/registrytest` | Fakes for tests |
+
+Settings that the CLI reads from the process environment can be set per call instead, so one process can
+drive several engines concurrently:
+- `compose.CLI.Env` and `storage.Volume.Env` hold extra environment variables for every docker call, such as
+  `DOCKER_HOST` or values for compose's `${VAR}` interpolation.
+- `action.Install.Env` and `action.Upgrade.Env` back the `env` and `expandenv` template functions.
+
+Until v1 the API may still change between minor versions.
 
 ## Contributing
 

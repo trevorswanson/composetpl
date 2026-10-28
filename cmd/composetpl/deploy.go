@@ -4,12 +4,13 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"text/tabwriter"
 	"time"
 
 	"github.com/spf13/cobra"
 
-	"github.com/trevorswanson/composetpl/internal/action"
-	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/pkg/action"
+	"github.com/trevorswanson/composetpl/pkg/release"
 )
 
 func newInstallCmd(g *globalFlags) *cobra.Command {
@@ -37,7 +38,7 @@ docker compose -p NAME up -d --remove-orphans, and record revision 1.`,
 			a := action.NewInstall(cfg)
 			a.DeployOptions, a.Strict, a.NoEnv = df.DeployOptions, rf.strict, rf.noEnv
 			a.Atomic, a.DryRun, a.Description, a.ProjectDir = in.Atomic, in.DryRun, in.Description, in.ProjectDir
-			a.ChartVersion, a.SubchartNotes = rf.chartVersion, rf.subchartNotes
+			a.ChartVersion, a.SubchartNotes, a.Labels = rf.chartVersion, rf.subchartNotes, in.Labels
 			rel, err := a.Run(ctx(cmd), args[0], args[1], user)
 			rf.printDebug(cmd.ErrOrStderr(), err)
 			if err != nil {
@@ -52,6 +53,7 @@ docker compose -p NAME up -d --remove-orphans, and record revision 1.`,
 	cmd.Flags().BoolVar(&in.DryRun, "dry-run", false, "render and validate with docker compose config, without deploying")
 	cmd.Flags().StringVar(&in.Description, "description", "", "custom description for the revision")
 	cmd.Flags().StringVar(&in.ProjectDir, "project-directory", "", "compose project directory for relative paths (default: the chart directory)")
+	cmd.Flags().StringToStringVar(&in.Labels, "labels", nil, "labels to record on the release, e.g. team=media,tier=apps")
 	format.register(cmd)
 	return cmd
 }
@@ -84,7 +86,8 @@ With no -f/--set flags the previous revision's values are reused, as in Helm.`,
 			a.DeployOptions, a.Strict, a.NoEnv = df.DeployOptions, rf.strict, rf.noEnv
 			a.Install, a.ReuseValues, a.ResetValues, a.ResetThenReuseValues = up.Install, up.ReuseValues, up.ResetValues, up.ResetThenReuseValues
 			a.HistoryMax, a.Atomic, a.DryRun, a.Description, a.ProjectDir = up.HistoryMax, up.Atomic, up.DryRun, up.Description, up.ProjectDir
-			a.ChartVersion, a.SubchartNotes = rf.chartVersion, rf.subchartNotes
+			a.ChartVersion, a.SubchartNotes, a.Labels = rf.chartVersion, rf.subchartNotes, up.Labels
+			warnManaged(cmd, cfg, args[0])
 			rel, err := a.Run(ctx(cmd), args[0], args[1], user)
 			rf.printDebug(cmd.ErrOrStderr(), err)
 			if err != nil {
@@ -107,6 +110,7 @@ With no -f/--set flags the previous revision's values are reused, as in Helm.`,
 	cmd.Flags().BoolVar(&up.DryRun, "dry-run", false, "render and validate with docker compose config, without deploying")
 	cmd.Flags().StringVar(&up.Description, "description", "", "custom description for the revision")
 	cmd.Flags().StringVar(&up.ProjectDir, "project-directory", "", "compose project directory for relative paths (default: the chart directory)")
+	cmd.Flags().StringToStringVar(&up.Labels, "labels", nil, "labels to merge over the release's current labels; an empty value removes one")
 	format.register(cmd)
 	return cmd
 }
@@ -116,6 +120,7 @@ func newRollbackCmd(g *globalFlags) *cobra.Command {
 		df         deployFlags
 		historyMax int
 		dryRun     bool
+		labels     map[string]string
 	)
 	cmd := &cobra.Command{
 		Use:   "rollback NAME [REVISION]",
@@ -130,7 +135,8 @@ recovers a release stuck in a pending state.`,
 				return err
 			}
 			a := action.NewRollback(cfg)
-			a.DeployOptions, a.HistoryMax, a.DryRun = df.DeployOptions, historyMax, dryRun
+			a.DeployOptions, a.HistoryMax, a.DryRun, a.Labels = df.DeployOptions, historyMax, dryRun, labels
+			warnManaged(cmd, cfg, args[0])
 			if len(args) == 2 {
 				if a.Version, err = parseRevision(args[1]); err != nil {
 					return err
@@ -151,6 +157,72 @@ recovers a release stuck in a pending state.`,
 	df.register(cmd.Flags())
 	cmd.Flags().IntVar(&historyMax, "history-max", 10, "maximum revisions kept per release (0 = unlimited)")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would happen without deploying")
+	cmd.Flags().StringToStringVar(&labels, "labels", nil, "labels to merge over the target revision's labels; an empty value removes one")
+	return cmd
+}
+
+// repairResult is what `repair -o json|yaml` prints.
+type repairResult struct {
+	Release  string                `json:"release"`
+	Revision int                   `json:"revision"`
+	Drift    []action.ServiceDrift `json:"drift"`
+	Repaired bool                  `json:"repaired"`
+}
+
+func newRepairCmd(g *globalFlags) *cobra.Command {
+	var (
+		df     deployFlags
+		dryRun bool
+		format outputFormat
+	)
+	cmd := &cobra.Command{
+		Use:   "repair NAME",
+		Short: "Bring a release's containers back to its deployed revision",
+		Long: `Repair compares a release's containers with its last deployed revision and, if
+any were removed, stopped or changed outside composetpl, runs docker compose up
+on that revision's manifest again. Unlike rollback it records no new revision
+and runs no hooks. --dry-run only reports the drift.`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			cfg, err := g.config(cmd, true)
+			if err != nil {
+				return err
+			}
+			a := action.NewRepair(cfg)
+			a.DeployOptions, a.DryRun = df.DeployOptions, dryRun
+			drift, err := a.Drift(ctx(cmd), args[0])
+			if err != nil {
+				return err
+			}
+			res := repairResult{Release: args[0], Drift: drift}
+			if len(drift) == 0 && !df.ForceRecreate {
+				a.DryRun = true
+			}
+			rel, err := a.Run(ctx(cmd), args[0])
+			if err != nil {
+				return err
+			}
+			res.Revision, res.Repaired = rel.Revision, !a.DryRun
+			return format.write(cmd.OutOrStdout(), res, func(w io.Writer) {
+				if len(drift) == 0 {
+					fmt.Fprintf(w, "Release %q matches revision %d.\n", rel.Name, rel.Revision)
+				} else {
+					tw := tabwriter.NewWriter(w, 0, 8, 2, ' ', 0)
+					fmt.Fprintln(tw, "SERVICE\tDRIFT\tCONTAINERS")
+					for _, d := range drift {
+						fmt.Fprintf(tw, "%s\t%s\t%s\n", d.Service, d.Reason, strings.Join(d.Containers, ","))
+					}
+					_ = tw.Flush()
+				}
+				if res.Repaired {
+					fmt.Fprintf(w, "Release %q has been repaired to revision %d.\n", rel.Name, rel.Revision)
+				}
+			})
+		},
+	}
+	df.registerUp(cmd.Flags())
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report drift without changing anything")
+	format.register(cmd)
 	return cmd
 }
 
@@ -169,6 +241,7 @@ kept unless --volumes is given.`,
 				return err
 			}
 			for _, name := range args {
+				warnManaged(cmd, cfg, name)
 				a := action.NewUninstall(cfg)
 				a.KeepHistory, a.Volumes, a.RemoveImages, a.DryRun = u.KeepHistory, u.Volumes, u.RemoveImages, u.DryRun
 				a.NoHooks, a.Timeout = u.NoHooks, u.Timeout
@@ -191,6 +264,18 @@ kept unless --volumes is given.`,
 	cmd.Flags().BoolVar(&u.NoHooks, "no-hooks", false, "skip pre-delete and post-delete hooks")
 	cmd.Flags().DurationVar(&u.Timeout, "timeout", 5*time.Minute, "how long each delete hook may run")
 	return cmd
+}
+
+// warnManaged warns when another tool (release.LabelManagedBy) manages release
+// name, since it may revert or fight changes made with the CLI.
+func warnManaged(cmd *cobra.Command, cfg *action.Configuration, name string) {
+	rel, err := action.Get(cfg, name, 0)
+	if err != nil {
+		return
+	}
+	if by := rel.Labels[release.LabelManagedBy]; by != "" && by != "composetpl" {
+		fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: release %q is managed by %s, which may revert changes made here\n", name, by)
+	}
 }
 
 // printRelease prints the summary Helm shows after install/upgrade.

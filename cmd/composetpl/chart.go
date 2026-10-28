@@ -6,8 +6,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/trevorswanson/composetpl/internal/action"
-	"github.com/trevorswanson/composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/pkg/action"
+	"github.com/trevorswanson/composetpl/pkg/chart"
 )
 
 func newCreateCmd() *cobra.Command {

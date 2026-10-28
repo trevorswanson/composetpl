@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 	"text/tabwriter"
 	"time"
@@ -11,8 +12,8 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"github.com/trevorswanson/composetpl/internal/action"
-	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/pkg/action"
+	"github.com/trevorswanson/composetpl/pkg/release"
 )
 
 // outputFormat is the -o table|json|yaml flag.
@@ -73,7 +74,7 @@ func newListCmd(g *globalFlags) *cobra.Command {
 				return err
 			}
 			a := action.NewList(cfg)
-			a.All, a.Filter = l.All, l.Filter
+			a.All, a.Filter, a.Selector = l.All, l.Filter, l.Selector
 			for s, on := range map[release.Status]bool{
 				release.StatusDeployed: deployed, release.StatusFailed: failed, release.StatusSuperseded: superseded,
 				release.StatusUninstalled: uninstalled, release.StatusPendingInstall: pending,
@@ -114,6 +115,7 @@ func newListCmd(g *globalFlags) *cobra.Command {
 	cmd.Flags().BoolVar(&superseded, "superseded", false, "show superseded releases")
 	cmd.Flags().BoolVar(&uninstalled, "uninstalled", false, "show releases uninstalled with --keep-history")
 	cmd.Flags().StringVarP(&l.Filter, "filter", "f", "", "regular expression; only show releases whose names match")
+	cmd.Flags().StringVarP(&l.Selector, "selector", "l", "", "label selector: k=v, k!=v, k or !k, comma-separated (all must match)")
 	cmd.Flags().BoolVarP(&short, "short", "q", false, "print release names only")
 	format.register(cmd)
 	return cmd
@@ -243,10 +245,22 @@ func newGetCmd(g *globalFlags) *cobra.Command {
 				"name": r.Name, "revision": r.Revision, "status": r.Status, "chart": r.Chart.Name,
 				"version": r.Chart.Version, "appVersion": r.Chart.AppVersion, "chartRef": r.Chart.Ref,
 				"projectDirectory": r.ProjectDir, "firstDeployed": r.FirstDeployed, "lastDeployed": r.LastDeployed,
+				"labels": r.Labels,
 			}
 			return (&outputFormat{format: format}).write(w, md, func(w io.Writer) {
 				fmt.Fprintf(w, "NAME: %s\nCHART: %s\nVERSION: %s\nAPP_VERSION: %s\nREVISION: %d\nSTATUS: %s\nCHART REF: %s\nPROJECT DIRECTORY: %s\nDEPLOYED_AT: %s\n",
 					r.Name, r.Chart.Name, r.Chart.Version, r.Chart.AppVersion, r.Revision, r.Status, r.Chart.Ref, r.ProjectDir, formatTime(r.LastDeployed))
+				if len(r.Labels) > 0 {
+					keys := make([]string, 0, len(r.Labels))
+					for k := range r.Labels {
+						keys = append(keys, k)
+					}
+					sort.Strings(keys)
+					fmt.Fprintln(w, "LABELS:")
+					for _, k := range keys {
+						fmt.Fprintf(w, "  %s=%s\n", k, r.Labels[k])
+					}
+				}
 			})
 		}},
 		{"all", "Show everything", func(w io.Writer, r *release.Release, _ bool, format string) error {
