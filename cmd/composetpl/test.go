@@ -8,7 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/action"
 )
 
 func newTestCmd(g *globalFlags) *cobra.Command {

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"sync"
 
-	"composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/compose"
 )
 
 // Fake records calls and keeps the manifests of "running" projects in memory.

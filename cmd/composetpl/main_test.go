@@ -10,11 +10,11 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"composetpl/internal/action"
-	"composetpl/internal/chart"
-	"composetpl/internal/compose/composetest"
-	"composetpl/internal/registry/registrytest"
-	"composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/compose/composetest"
+	"github.com/trevorswanson/composetpl/internal/registry/registrytest"
+	"github.com/trevorswanson/composetpl/internal/storage"
 )
 
 var update = flag.Bool("update", false, "rewrite golden files")

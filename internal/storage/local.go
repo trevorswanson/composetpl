@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // Local stores records as JSON files under Root/<release>/v<rev>.json.

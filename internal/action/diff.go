@@ -5,9 +5,9 @@ import (
 	"errors"
 	"fmt"
 
-	"composetpl/internal/diff"
-	"composetpl/internal/release"
-	"composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/internal/diff"
+	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/storage"
 )
 
 // deployedManifest is the manifest currently deployed for name, or "" if none is.

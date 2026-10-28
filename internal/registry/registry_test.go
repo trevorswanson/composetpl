@@ -9,9 +9,9 @@ import (
 
 	"oras.land/oras-go/v2"
 
-	"composetpl/internal/chart"
-	"composetpl/internal/registry"
-	"composetpl/internal/registry/registrytest"
+	"github.com/trevorswanson/composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/registry"
+	"github.com/trevorswanson/composetpl/internal/registry/registrytest"
 )
 
 func archive(t *testing.T, name, version string) []byte {

@@ -9,7 +9,7 @@ import (
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"oras.land/oras-go/v2/content/memory"
 
-	"composetpl/internal/registry"
+	"github.com/trevorswanson/composetpl/internal/registry"
 )
 
 // Registry holds in-memory repositories keyed by "host/path/name".

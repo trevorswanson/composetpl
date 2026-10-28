@@ -15,7 +15,7 @@ import (
 	"strings"
 	"text/template"
 
-	"composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/chart"
 )
 
 // Options controls rendering behavior.

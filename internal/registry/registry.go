@@ -25,7 +25,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/credentials"
 	"oras.land/oras-go/v2/registry/remote/retry"
 
-	"composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/chart"
 )
 
 // Media types of a composetpl chart artifact. They are deliberately not Helm's,

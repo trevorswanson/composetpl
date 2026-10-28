@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"composetpl/internal/hooks"
-	"composetpl/internal/release"
-	"composetpl/internal/values"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/values"
 )
 
 // Upgrade deploys a new revision of an existing release.

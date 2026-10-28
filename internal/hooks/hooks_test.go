@@ -7,8 +7,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"composetpl/internal/compose/composetest"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/compose/composetest"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 const manifest = `name: app

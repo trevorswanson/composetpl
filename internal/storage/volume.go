@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"composetpl/internal/compose"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 const (

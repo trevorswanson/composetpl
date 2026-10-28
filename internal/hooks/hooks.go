@@ -28,8 +28,8 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"composetpl/internal/compose"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // ExtensionKey marks a service as a hook.

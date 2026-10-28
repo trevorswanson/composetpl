@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/chart"
 )
 
 // testChart builds an in-memory chart named "app" with the given templates

@@ -8,8 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"composetpl/internal/action"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 func newInstallCmd(g *globalFlags) *cobra.Command {

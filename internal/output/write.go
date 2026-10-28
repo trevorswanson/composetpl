@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"composetpl/internal/engine"
+	"github.com/trevorswanson/composetpl/internal/engine"
 )
 
 // WriteSplit writes each rendered template to dir, keeping its path relative to

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"composetpl/internal/engine"
+	"github.com/trevorswanson/composetpl/internal/engine"
 )
 
 func TestMerge(t *testing.T) {

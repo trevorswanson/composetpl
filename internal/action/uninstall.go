@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"time"
 
-	"composetpl/internal/compose"
-	"composetpl/internal/hooks"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // Uninstall stops and removes a release's containers and networks.
