@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	"composetpl/internal/chart"
 )
 
 var version = "dev"
@@ -43,6 +45,9 @@ upgrade, rollback, history and uninstall, backed by docker compose.`,
 		newGetCmd(g),
 		newDiffCmd(g),
 		newTestCmd(g),
+		newCreateCmd(),
+		newShowCmd(func(_ *cobra.Command, ref string) (*chart.Chart, error) { return chart.Load(ref) }),
+		newPackageCmd(),
 		&cobra.Command{
 			Use:   "version",
 			Short: "Print the version",

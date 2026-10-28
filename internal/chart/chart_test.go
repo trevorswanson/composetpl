@@ -70,7 +70,7 @@ func TestLoadErrors(t *testing.T) {
 
 	for dir, want := range map[string]string{
 		"a":       "dependency cycle",
-		"remote":  "only file:// repositories are supported",
+		"remote":  `unsupported repository "https://charts.example.com"`,
 		"noname":  "name is required",
 		"missing": "is not a chart",
 	} {

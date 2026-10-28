@@ -299,3 +299,35 @@ func TestHooksCLI(t *testing.T) {
 	}
 	expect(t, out, "Phase:          Failed")
 }
+
+func TestChartAuthoringCLI(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "whoami")
+	expect(t, mustRun(t, "create", dir), "Creating "+dir)
+	out := mustRun(t, "template", dir)
+	expect(t, out, "name: whoami", "  whoami:", "image: nginx:1.0.0", "app.composetpl.io/release: \"whoami\"", `test: ["CMD", "wget"`)
+	if strings.Contains(out, "smoke-test") {
+		t.Error("test hook should be stripped from template output")
+	}
+	expect(t, mustRun(t, "lint", dir), "[INFO] 1 hook service(s)", "whoami: lint passed")
+	expect(t, mustRun(t, "show", "chart", dir), "name: whoami", "version: 0.1.0")
+	expect(t, mustRun(t, "show", "values", dir), "repository: nginx")
+
+	dist := t.TempDir()
+	out = mustRun(t, "package", exampleChart, "-d", dist, "--version", "0.2.0")
+	tgz := filepath.Join(dist, "media-0.2.0.tgz")
+	expect(t, out, "saved it to: "+tgz)
+	expect(t, mustRun(t, "show", "all", tgz), "name: media", "version: 0.2.0", "---", "global:", `"$schema"`)
+
+	// The packaged chart renders exactly like the directory.
+	fromDir := mustRun(t, "template", exampleChart)
+	if fromTgz := mustRun(t, "template", tgz); fromTgz != fromDir {
+		t.Errorf("packaged chart renders differently:\n%s", fromTgz)
+	}
+
+	useFakeDocker(t)
+	mustRun(t, "install", "media", tgz)
+	cwd, _ := os.Getwd()
+	expect(t, mustRun(t, "get", "metadata", "media"), "VERSION: 0.2.0", "PROJECT DIRECTORY: "+cwd, "CHART REF: "+tgz)
+	mustRun(t, "upgrade", "media", exampleChart)
+	expect(t, mustRun(t, "history", "media"), "media-0.2.0", "media-0.1.0")
+}

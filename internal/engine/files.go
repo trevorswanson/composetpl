@@ -3,11 +3,12 @@ package engine
 import (
 	"encoding/base64"
 	"path"
-	"regexp"
 	"sort"
 	"strings"
 
 	"sigs.k8s.io/yaml"
+
+	"composetpl/internal/glob"
 )
 
 // Files is the .Files object: the chart's non-template files keyed by relative slash path.
@@ -27,7 +28,7 @@ func (f Files) Get(name string) string {
 // Glob returns the files whose paths match pattern. "*" matches within a path
 // segment and "**" matches across segments.
 func (f Files) Glob(pattern string) Files {
-	re, err := globToRegexp(pattern)
+	re, err := glob.Compile(pattern)
 	if err != nil {
 		return Files{}
 	}
@@ -79,30 +80,4 @@ func (f Files) Names() []string {
 	}
 	sort.Strings(names)
 	return names
-}
-
-func globToRegexp(pattern string) (*regexp.Regexp, error) {
-	var b strings.Builder
-	b.WriteString("^")
-	for i := 0; i < len(pattern); i++ {
-		c := pattern[i]
-		switch {
-		case c == '*' && i+1 < len(pattern) && pattern[i+1] == '*':
-			i++
-			if i+1 < len(pattern) && pattern[i+1] == '/' {
-				i++
-				b.WriteString("(?:.*/)?")
-			} else {
-				b.WriteString(".*")
-			}
-		case c == '*':
-			b.WriteString("[^/]*")
-		case c == '?':
-			b.WriteString("[^/]")
-		default:
-			b.WriteString(regexp.QuoteMeta(string(c)))
-		}
-	}
-	b.WriteString("$")
-	return regexp.Compile(b.String())
 }

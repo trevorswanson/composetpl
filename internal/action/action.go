@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
 
@@ -205,7 +206,13 @@ func (c *Configuration) releaseFrom(r *Rendered, name string, revision int, conf
 		return nil, err
 	}
 	if projectDir == "" {
-		projectDir = r.Chart.Dir
+		// Relative paths resolve against the chart directory; a packaged chart has
+		// none, so use the working directory as docker compose would.
+		if projectDir = r.Chart.Dir; projectDir == "" {
+			if projectDir, err = os.Getwd(); err != nil {
+				return nil, err
+			}
+		}
 	}
 	md := r.Chart.Metadata
 	now := c.now()
