@@ -13,6 +13,8 @@ upgrade, roll back and uninstall them as versioned releases.
 - **Releases:** `install`, `upgrade`, `rollback`, `uninstall`, `history`, `status`, `get` and `diff`,
   backed by `docker compose`, with history stored on the Docker host.
 - **Hooks and tests:** pre/post install, upgrade, rollback and delete hooks, plus `composetpl test`.
+- **Umbrella charts:** deploy several stacks as one release, with Helm's subchart values, `global`,
+  `condition`, `tags`, `alias` and `import-values`.
 - **Distribution:** `package`, OCI `push`/`pull`, and `dependency update`/`build` with a `Chart.lock`.
 
 ```bash
@@ -88,15 +90,62 @@ dependencies:
     repository: file://../common          # or oci://ghcr.io/me/charts with version: ^0.1.0
 ```
 
-Every template of a dependency is parsed into the same template set, but none of them are rendered.
-If a chart `define`s the same name as one of its dependencies, the chart's version wins. That lets a library
-expose "hooks" for stacks to override (see `common.extraLabels` in the example).
+Mark a chart `type: library` in its `Chart.yaml` to use it only for its `define`s: its templates are parsed into
+the shared template set but never rendered. If a chart `define`s the same name as one of its dependencies, the
+chart's version wins. That lets a library expose "hooks" for stacks to override (see `common.extraLabels` in the
+example).
 
 Where a dependency is loaded from, in order:
 1. Vendored copies in `charts/`.
 2. `file://` paths.
 
 `oci://` dependencies must be vendored first with `dependency update` or `dependency build`.
+
+### Umbrella charts
+
+A dependency that isn't `type: library` is an application subchart. Its templates render into the same release,
+as in Helm, so an umbrella chart can deploy several stacks as one compose project:
+
+```yaml
+# homelab/Chart.yaml
+dependencies:
+  - name: media
+    repository: file://../stack
+    condition: media.enabled            # first boolean among these value paths decides
+  - name: monitoring
+    repository: file://../monitoring
+    tags: [ops]                         # or enable by .Values.tags.ops
+  - name: postgres
+    alias: photos-db                    # the same chart can appear twice under different aliases
+    repository: oci://ghcr.io/me/charts
+    version: ^1.2.0
+    import-values:
+      - conn                            # copies the subchart's exports.conn into the parent's values
+      - {child: port, parent: photosDbPort}
+```
+
+```yaml
+# homelab/values.yaml
+global:                 # copied into every subchart's .Values.global (the parent wins)
+  domain: home.example.com
+media:                  # becomes the media subchart's .Values, over its own values.yaml
+  apps:
+    jellyfin: {enabled: true}
+monitoring:
+  enabled: false
+```
+
+How subcharts behave:
+- **Values:** each subchart sees only its own `.Values`, which is the subchart's `values.yaml` overlaid by the
+  parent's `<name>:` section and any `--set <name>.key=...`. Each subchart's `values.schema.json` is checked
+  against those values.
+- **Template context:** subchart templates get their own `.Chart`, `.Files` and `.Template`, and share
+  `.Release` and `.Capabilities` with the parent.
+- **Notes:** only the parent's `NOTES.txt` is printed, unless you pass `--render-subchart-notes`.
+- **Naming:** all output is merged into one compose project. Two subcharts that define the same service name
+  are a conflict, reported with both template names. Name services after `.Chart.Name`, which is the alias,
+  if a chart may be used more than once.
+- **Split output:** `template --output-dir` writes subchart files under `charts/<name>/`.
 
 ## Releases
 
@@ -156,11 +205,16 @@ services:
       weight: -5                             # lower runs first (default 0)
       delete-policy: [before-hook-creation, hook-succeeded]   # default: before-hook-creation
       no-deps: false                         # true: don't start depends_on services
+      retries: 3                             # run again on failure (default 0)
+      backoff: 10s                           # first retry delay; doubles each time, capped at 5m
+      timeout: 2m                            # per attempt; overrides --timeout
 ```
 
 - **Events:** `pre-install`, `post-install`, `pre-upgrade`, `post-upgrade`, `pre-rollback`, `post-rollback`,
   `pre-delete`, `post-delete` and `test`.
-- **Failures:** a failed hook fails the revision, and triggers recovery if `--atomic` was given.
+- **Failures:** a hook that still fails after its retries fails the revision, and triggers recovery if
+  `--atomic` was given. Each retry replaces the previous attempt's container; delete policies apply to the
+  final outcome.
 - **Tests:** `composetpl test NAME` runs the `test` hooks.
 - **Template output:** `template` leaves hook services out unless you pass `--include-hooks`.
 
@@ -193,13 +247,13 @@ composetpl pull oci://ghcr.io/me/charts/media:0.1.0 --untar
 | install / upgrade / rollback / uninstall / history / get / status / list | Same commands and flags, backed by docker compose |
 | --wait / --atomic / --dry-run / --reuse-values family | Same semantics (`up --wait`; atomic redeploys the previous revision) |
 | helm-diff plugin | `composetpl diff` |
-| hooks, `helm test` | `x-composetpl` hook services; no Job-style retries or backoff |
+| hooks, `helm test` | `x-composetpl` hook services, with retries and backoff like a Job's `backoffLimit` |
 | package / push / pull / dependency / Chart.lock | Same, OCI only |
 | `--kube-context`, namespaces | `--context` / `-H`; each release is a compose project |
 | `lookup` | Docker objects instead of Kubernetes resources |
 | Rolling updates | Not possible: compose recreates changed containers (brief downtime) |
+| Umbrella charts: subcharts, `global`, `condition`, `tags`, `alias`, `import-values` | Same, merged into one compose project |
 | HTTP chart repos, `search`, plugins, provenance | Not supported |
-| Application subcharts (umbrella charts with scoped values) | Not supported; dependencies are library charts |
 
 ### Things to know
 
@@ -212,7 +266,14 @@ composetpl pull oci://ghcr.io/me/charts/media:0.1.0 --untar
 
 ## Example
 
-`examples/homelab` has a `common` library chart and a `media` stack. The stack:
+`examples/homelab` has:
+- `common`: a library chart of shared helpers;
+- `stack`: the `media` stack;
+- `monitoring`: a monitoring stack (dozzle and uptime-kuma);
+- `umbrella`: a `homelab` umbrella chart that deploys both stacks as one release, with shared `global`
+  settings.
+
+The media stack:
 - builds one service per entry in `.Values.apps`, with Traefik and homepage labels;
 - reads Traefik's arguments from `files/`;
 - validates its values with a schema;
@@ -224,6 +285,7 @@ composetpl template examples/homelab/stack
 composetpl install media examples/homelab/stack --wait
 composetpl diff upgrade media examples/homelab/stack --set apps.plex.enabled=false
 composetpl test media --logs
+composetpl install homelab examples/homelab/umbrella --set monitoring.enabled=false
 ```
 
 ## Contributing
