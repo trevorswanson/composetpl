@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"composetpl/internal/hooks"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // Rollback redeploys an earlier revision as a new revision.

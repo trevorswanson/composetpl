@@ -16,12 +16,12 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"composetpl/internal/action"
-	"composetpl/internal/compose"
-	"composetpl/internal/output"
-	"composetpl/internal/registry"
-	"composetpl/internal/storage"
-	"composetpl/internal/values"
+	"github.com/trevorswanson/composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/output"
+	"github.com/trevorswanson/composetpl/internal/registry"
+	"github.com/trevorswanson/composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/internal/values"
 )
 
 // globalFlags select the Docker engine and release storage.

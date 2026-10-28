@@ -1,0 +1,53 @@
+version: "2"
+
+run:
+  build-tags:
+    - integration
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - misspell
+    - revive
+    - staticcheck
+    - unused
+    - gosec
+  settings:
+    revive:
+      rules:
+        # Exported identifiers are documented where it helps; don't require it everywhere.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    gosec:
+      excludes:
+        # Unchecked errors are errcheck's job, which knows the standard exceptions.
+        - G104
+        # composetpl's job is to run docker with arguments built from charts and flags.
+        - G204
+        # Charts, packages, Chart.lock and rendered compose files are meant to be shared,
+        # like git or Helm leave them. Release records, which can hold secrets, are 0600.
+        - G301
+        - G306
+        # Reading files named by the user (charts, values, --set-file) is the point.
+        - G304
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # Tests write fixtures with ordinary permissions and use fixed temp paths.
+      - path: _test\.go
+        linters: [gosec]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/trevorswanson/composetpl

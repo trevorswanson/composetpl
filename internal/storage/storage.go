@@ -12,7 +12,7 @@ import (
 	"strconv"
 	"strings"
 
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // ErrNotFound is returned when a release or revision does not exist.

@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"composetpl/internal/compose/composetest"
-	"composetpl/internal/release"
-	"composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/internal/compose/composetest"
+	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/storage"
 )
 
 type env struct {

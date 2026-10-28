@@ -13,15 +13,15 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"composetpl/internal/chart"
-	"composetpl/internal/compose"
-	"composetpl/internal/engine"
-	"composetpl/internal/hooks"
-	"composetpl/internal/output"
-	"composetpl/internal/registry"
-	"composetpl/internal/release"
-	"composetpl/internal/storage"
-	"composetpl/internal/values"
+	"github.com/trevorswanson/composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/engine"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/output"
+	"github.com/trevorswanson/composetpl/internal/registry"
+	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/internal/values"
 )
 
 // Configuration is shared by every action that touches docker or release storage.

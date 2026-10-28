@@ -8,11 +8,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
 
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // fakeVolume emulates the docker commands the Volume driver issues, keeping the
@@ -158,6 +159,9 @@ func TestDriverContract(t *testing.T) {
 }
 
 func TestLocalPermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows has no Unix permission bits")
+	}
 	dir := t.TempDir()
 	if err := NewLocal(dir).Save(rel("media", 1, release.StatusDeployed)); err != nil {
 		t.Fatal(err)
@@ -187,5 +191,27 @@ func TestVolumeHelperInvocations(t *testing.T) {
 	}
 	if strings.Join(fv.calls, "\n") != strings.Join(want, "\n") {
 		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(fv.calls, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestReadsV2Records guards the stored record format: releases written by earlier
+// versions must stay readable (the API version is data, not a Go import path).
+func TestReadsV2Records(t *testing.T) {
+	dir := t.TempDir()
+	rec := `{"apiVersion": "composetpl/v1", "name": "media", "revision": 3, "status": "deployed",
+  "chart": {"name": "media", "version": "0.1.0"}, "manifest": "name: media\n",
+  "firstDeployed": "2026-10-27T20:00:00Z", "lastDeployed": "2026-10-27T21:00:00Z"}`
+	if err := os.MkdirAll(filepath.Join(dir, "media"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "media", "v3.json"), []byte(rec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r, err := NewLocal(dir).Get("media", 3)
+	if err != nil {
+		t.Fatalf("reading a v2 record: %v", err)
+	}
+	if r.Status != release.StatusDeployed || r.Chart.Version != "0.1.0" {
+		t.Errorf("record = %+v", r)
 	}
 }

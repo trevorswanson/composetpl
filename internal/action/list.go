@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"regexp"
 
-	"composetpl/internal/compose"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // ListItem is a release's latest revision plus its live compose status.

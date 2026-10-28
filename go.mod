@@ -1,4 +1,4 @@
-module composetpl
+module github.com/trevorswanson/composetpl
 
 go 1.27.3
 

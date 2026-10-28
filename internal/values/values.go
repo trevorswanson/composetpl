@@ -5,6 +5,8 @@ package values
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 
 	"helm.sh/helm/v3/pkg/strvals"
 	"sigs.k8s.io/yaml"
@@ -47,11 +49,25 @@ func (o Options) MergeValues() (map[string]interface{}, error) {
 			b, err := os.ReadFile(string(rs))
 			return string(b), err
 		}
-		if err := strvals.ParseIntoFile(v, base, reader); err != nil {
+		if err := strvals.ParseIntoFile(slashPaths(v), base, reader); err != nil {
 			return nil, fmt.Errorf("parsing --set-file %q: %w", v, err)
 		}
 	}
 	return base, nil
+}
+
+// slashPaths rewrites the paths in a --set-file argument ("key=path[,key=path]")
+// with forward slashes. The strvals parser treats "\" as an escape, which would
+// mangle Windows paths such as C:\Users\me\pw.txt; Go opens forward-slash paths
+// on Windows, and on other systems this changes nothing.
+func slashPaths(arg string) string {
+	pairs := strings.Split(arg, ",")
+	for i, p := range pairs {
+		if k, path, ok := strings.Cut(p, "="); ok {
+			pairs[i] = k + "=" + filepath.ToSlash(path)
+		}
+	}
+	return strings.Join(pairs, ",")
 }
 
 // Coalesce overlays user values onto chart defaults. A null user value deletes the key.

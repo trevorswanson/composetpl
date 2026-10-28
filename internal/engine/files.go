@@ -8,7 +8,7 @@ import (
 
 	"sigs.k8s.io/yaml"
 
-	"composetpl/internal/glob"
+	"github.com/trevorswanson/composetpl/internal/glob"
 )
 
 // Files is the .Files object: the chart's non-template files keyed by relative slash path.

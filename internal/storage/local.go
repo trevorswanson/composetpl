@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // Local stores records as JSON files under Root/<release>/v<rev>.json.
@@ -23,11 +23,19 @@ func (l *Local) Name() string { return "local" }
 
 func (l *Local) load(name string) (records, error) {
 	rs := records{}
-	root := l.Root
-	if name != "" {
-		root = filepath.Join(l.Root, name)
+	base, err := os.OpenRoot(l.Root)
+	if errors.Is(err, fs.ErrNotExist) {
+		return rs, nil
 	}
-	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+	if err != nil {
+		return nil, err
+	}
+	defer base.Close()
+	walk := l.Root
+	if name != "" {
+		walk = filepath.Join(l.Root, name)
+	}
+	err = filepath.WalkDir(walk, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil
@@ -41,7 +49,7 @@ func (l *Local) load(name string) (records, error) {
 		if _, _, ok := parseRecordPath(filepath.ToSlash(rel)); !ok {
 			return nil
 		}
-		data, err := os.ReadFile(p)
+		data, err := base.ReadFile(rel)
 		if err != nil {
 			return err
 		}

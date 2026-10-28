@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"composetpl/internal/compose"
-	"composetpl/internal/hooks"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/compose"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // Install deploys a chart as a new release.

@@ -163,6 +163,13 @@ func ReadDir(dir string) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Reads go through os.Root, so a file swapped for a symlink mid-walk can't pull
+	// anything from outside the chart into it (and into a packaged archive).
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return nil, err
+	}
+	defer root.Close()
 	files := map[string][]byte{}
 	err = filepath.WalkDir(dir, func(p string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -182,7 +189,7 @@ func ReadDir(dir string) (map[string][]byte, error) {
 		if d.IsDir() || !d.Type().IsRegular() {
 			return nil
 		}
-		data, err := os.ReadFile(p)
+		data, err := root.ReadFile(filepath.FromSlash(rel))
 		if err != nil {
 			return err
 		}

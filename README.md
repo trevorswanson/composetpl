@@ -1,5 +1,9 @@
 # composetpl
 
+[![CI](https://github.com/trevorswanson/composetpl/actions/workflows/ci.yml/badge.svg)](https://github.com/trevorswanson/composetpl/actions/workflows/ci.yml)
+[![Go Reference](https://pkg.go.dev/badge/github.com/trevorswanson/composetpl.svg)](https://pkg.go.dev/github.com/trevorswanson/composetpl)
+[![License](https://img.shields.io/github/license/trevorswanson/composetpl)](LICENSE)
+
 Helm for docker compose. Write your compose files as Helm-style charts, then install,
 upgrade, roll back and uninstall them as versioned releases.
 
@@ -19,11 +23,14 @@ composetpl rollback media
 
 ## Install
 
+Download a binary for Linux, macOS or Windows (amd64 or arm64) from the
+[releases page](https://github.com/trevorswanson/composetpl/releases), or install with Go:
+
 ```bash
-go install ./cmd/composetpl
+go install github.com/trevorswanson/composetpl/cmd/composetpl@latest
 ```
 
-Or build a static binary (about 12 MB):
+Or build a static binary (about 12 MB) from a checkout:
 
 ```bash
 CGO_ENABLED=0 go build -ldflags="-s -w" -o composetpl ./cmd/composetpl
@@ -219,12 +226,16 @@ composetpl diff upgrade media examples/homelab/stack --set apps.plex.enabled=fal
 composetpl test media --logs
 ```
 
-## Development
+## Contributing
+
+Issues and pull requests are welcome! [CONTRIBUTING.md](CONTRIBUTING.md) covers how to report bugs, set up a
+development environment, run the tests and get a pull request merged. In short:
 
 ```bash
-go test ./...
-go test ./cmd/composetpl -update                              # regenerate golden files
-go test -tags integration -run Integration -v ./cmd/composetpl   # needs Docker + compose
+go test ./...                                                     # unit tests, no Docker needed
+go test ./cmd/composetpl -update                                  # regenerate golden files
+go test -tags integration -run Integration -v ./cmd/composetpl    # needs Docker + compose
+golangci-lint run ./...
 ```
 
 ## License

@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"sigs.k8s.io/yaml"
 
-	"composetpl/internal/action"
-	"composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/release"
 )
 
 // outputFormat is the -o table|json|yaml flag.

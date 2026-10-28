@@ -12,7 +12,7 @@ import (
 	"regexp"
 	"strings"
 
-	"composetpl/internal/glob"
+	"github.com/trevorswanson/composetpl/internal/glob"
 )
 
 // IgnoreFile lists paths to leave out of a chart, like Helm's .helmignore.

@@ -7,9 +7,9 @@ import (
 	"io"
 	"time"
 
-	"composetpl/internal/hooks"
-	"composetpl/internal/release"
-	"composetpl/internal/storage"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/release"
+	"github.com/trevorswanson/composetpl/internal/storage"
 )
 
 // TestResult is the outcome of one test hook.

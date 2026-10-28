@@ -197,3 +197,22 @@ func TestLoadRejectsUnsafeMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestReadDirSkipsSymlinks(t *testing.T) {
+	outside := filepath.Join(t.TempDir(), "secret")
+	if err := os.WriteFile(outside, []byte("do not package"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	writeChart(t, dir, map[string]string{"Chart.yaml": "name: x\nversion: 1.0.0\n", "files/ok.txt": "ok"})
+	if err := os.Symlink(outside, filepath.Join(dir, "files", "secret")); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+	files, err := ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := files["files/secret"]; ok || string(files["files/ok.txt"]) != "ok" {
+		t.Errorf("symlink must be skipped and regular files kept: %v", files)
+	}
+}

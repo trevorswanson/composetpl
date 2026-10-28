@@ -12,7 +12,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"composetpl/internal/engine"
+	"github.com/trevorswanson/composetpl/internal/engine"
 )
 
 // ParseError is a rendered template that is not valid YAML.

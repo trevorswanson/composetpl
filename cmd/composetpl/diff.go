@@ -8,8 +8,8 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 
-	"composetpl/internal/action"
-	"composetpl/internal/diff"
+	"github.com/trevorswanson/composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/diff"
 )
 
 // diffFlags control how changes are printed.

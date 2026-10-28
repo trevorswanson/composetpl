@@ -7,10 +7,10 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"composetpl/internal/action"
-	"composetpl/internal/hooks"
-	"composetpl/internal/lint"
-	"composetpl/internal/output"
+	"github.com/trevorswanson/composetpl/internal/action"
+	"github.com/trevorswanson/composetpl/internal/hooks"
+	"github.com/trevorswanson/composetpl/internal/lint"
+	"github.com/trevorswanson/composetpl/internal/output"
 )
 
 // templateFlags are shared by template and lint.

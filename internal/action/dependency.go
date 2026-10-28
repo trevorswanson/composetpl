@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"composetpl/internal/chart"
-	"composetpl/internal/registry"
+	"github.com/trevorswanson/composetpl/internal/chart"
+	"github.com/trevorswanson/composetpl/internal/registry"
 )
 
 // LoadChart loads a chart directory, .tgz, or oci:// reference. version is a
