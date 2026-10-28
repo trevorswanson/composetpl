@@ -1,0 +1,11 @@
+composetpl
+Copyright 2026 Trevor Swanson
+
+This product includes software adapted from Helm (https://helm.sh),
+Copyright The Helm Authors, licensed under the Apache License, Version 2.0.
+The adapted portions are in internal/engine/engine.go and
+internal/engine/funcs.go and have been modified for this project.
+
+Third-party Go modules compiled into the binary are distributed under their
+own licenses (MIT, BSD-2-Clause, BSD-3-Clause and Apache-2.0); see each
+module's LICENSE file, e.g. via `go mod download` and $(go env GOMODCACHE).

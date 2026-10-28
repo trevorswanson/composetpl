@@ -116,3 +116,8 @@ composetpl template examples/homelab/stack --output-dir out/
 go test ./...
 go test ./cmd/composetpl -update   # regenerate golden files after changing the example
 ```
+
+## License
+
+Apache License 2.0; see [LICENSE](LICENSE). Portions of the template engine are adapted from
+[Helm](https://helm.sh) (Apache-2.0); see [NOTICE](NOTICE).

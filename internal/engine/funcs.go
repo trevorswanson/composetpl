@@ -1,5 +1,6 @@
 /*
-Portions adapted from Helm (helm.sh/helm/v3/pkg/engine/funcs.go).
+Portions adapted from Helm (helm.sh/helm/v3/pkg/engine/funcs.go)
+and modified for composetpl.
 Copyright The Helm Authors. Licensed under the Apache License, Version 2.0.
 */
 
