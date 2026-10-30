@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/trevorswanson/composetpl/pkg/compose"
-	"github.com/trevorswanson/composetpl/pkg/hooks"
 	"github.com/trevorswanson/composetpl/pkg/release"
 )
 
@@ -35,6 +33,18 @@ func NewInstall(cfg *Configuration) *Install { return &Install{cfg: cfg} }
 
 // Run installs chartPath as release name with the given user values.
 func (i *Install) Run(ctx context.Context, name, chartPath string, userValues map[string]interface{}) (*release.Release, error) {
+	rel, err := i.Prepare(ctx, name, chartPath, userValues)
+	if err != nil || i.DryRun {
+		return rel, err
+	}
+	return i.apply().Run(ctx, name, rel.Revision)
+}
+
+// Prepare renders chartPath as the next revision of release name, validates it
+// with `docker compose config`, and saves it as pending install, without
+// running hooks or touching containers. Apply deploys it. With DryRun, the
+// revision is returned without being saved.
+func (i *Install) Prepare(ctx context.Context, name, chartPath string, userValues map[string]interface{}) (*release.Release, error) {
 	if err := release.ValidateName(name); err != nil {
 		return nil, err
 	}
@@ -82,35 +92,10 @@ func (i *Install) Run(ctx context.Context, name, chartPath string, userValues ma
 	if err := i.cfg.Store.Save(rel); err != nil {
 		return nil, err
 	}
-	if err := i.cfg.runHooks(ctx, rel, hooks.PreInstall, i.Timeout, i.NoHooks); err != nil {
-		return rel, i.failed(ctx, rel, err)
-	}
-	if err := i.cfg.up(ctx, rel, i.DeployOptions); err != nil {
-		return rel, i.failed(ctx, rel, err)
-	}
-	if err := i.cfg.runHooks(ctx, rel, hooks.PostInstall, i.Timeout, i.NoHooks); err != nil {
-		return rel, i.failed(ctx, rel, err)
-	}
-	desc := i.Description
-	if desc == "" {
-		desc = "Install complete"
-	}
-	return rel, i.cfg.markDeployed(rel, h, desc)
+	return rel, nil
 }
 
-func (i *Install) failed(ctx context.Context, rel *release.Release, cause error) error {
-	err := i.cfg.markFailed(rel, cause)
-	if !i.Atomic {
-		return err
-	}
-	// Like `helm install --atomic`: tear everything down and purge the release.
-	if derr := i.cfg.Compose.Down(ctx, project(rel), compose.DownOptions{}); derr != nil {
-		return fmt.Errorf("release %q failed: %w; atomic cleanup also failed: %v", rel.Name, cause, derr)
-	}
-	if h, herr := i.cfg.history(rel.Name); herr == nil {
-		if derr := i.cfg.Store.Delete(h...); derr != nil {
-			return fmt.Errorf("release %q failed: %w; deleting its history also failed: %v", rel.Name, cause, derr)
-		}
-	}
-	return fmt.Errorf("release %q failed, and has been uninstalled due to atomic being set: %w", rel.Name, cause)
+// apply is the Apply that deploys what Prepare saved.
+func (i *Install) apply() *Apply {
+	return &Apply{cfg: i.cfg, DeployOptions: i.DeployOptions, Atomic: i.Atomic, Description: i.Description}
 }

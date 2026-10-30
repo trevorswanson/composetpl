@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/trevorswanson/composetpl/pkg/hooks"
 	"github.com/trevorswanson/composetpl/pkg/release"
 	"github.com/trevorswanson/composetpl/pkg/values"
 )
@@ -40,6 +39,20 @@ func NewUpgrade(cfg *Configuration) *Upgrade { return &Upgrade{cfg: cfg, History
 
 // Run upgrades release name to chartPath with the given user values.
 func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues map[string]interface{}) (*release.Release, error) {
+	rel, err := u.Prepare(ctx, name, chartPath, userValues)
+	if err != nil || u.DryRun {
+		return rel, err
+	}
+	a := &Apply{cfg: u.cfg, DeployOptions: u.DeployOptions, Atomic: u.Atomic, HistoryMax: u.HistoryMax, Description: u.Description}
+	return a.Run(ctx, name, rel.Revision)
+}
+
+// Prepare renders chartPath as the next revision of release name, validates it
+// with `docker compose config`, and saves it as pending upgrade (or pending
+// install, with Install and no release), without running hooks or touching
+// containers. Apply deploys it. With DryRun, the revision is returned without
+// being saved.
+func (u *Upgrade) Prepare(ctx context.Context, name, chartPath string, userValues map[string]interface{}) (*release.Release, error) {
 	if err := release.ValidateName(name); err != nil {
 		return nil, err
 	}
@@ -57,7 +70,7 @@ func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues ma
 		in := &Install{cfg: u.cfg, DeployOptions: u.DeployOptions, Strict: u.Strict, NoEnv: u.NoEnv, Env: u.Env,
 			Atomic: u.Atomic, DryRun: u.DryRun, Description: u.Description, ProjectDir: u.ProjectDir,
 			ChartVersion: u.ChartVersion, SubchartNotes: u.SubchartNotes, Labels: u.Labels}
-		return in.Run(ctx, name, chartPath, userValues)
+		return in.Prepare(ctx, name, chartPath, userValues)
 	}
 	latest := h[len(h)-1]
 	if latest.Status.IsPending() {
@@ -101,23 +114,7 @@ func (u *Upgrade) Run(ctx context.Context, name, chartPath string, userValues ma
 	if err := u.cfg.Store.Save(rel); err != nil {
 		return nil, err
 	}
-	if err := u.cfg.runHooks(ctx, rel, hooks.PreUpgrade, u.Timeout, u.NoHooks); err != nil {
-		return rel, u.failed(ctx, rel, current, err)
-	}
-	if err := u.cfg.up(ctx, rel, u.DeployOptions); err != nil {
-		return rel, u.failed(ctx, rel, current, err)
-	}
-	if err := u.cfg.runHooks(ctx, rel, hooks.PostUpgrade, u.Timeout, u.NoHooks); err != nil {
-		return rel, u.failed(ctx, rel, current, err)
-	}
-	desc := u.Description
-	if desc == "" {
-		desc = "Upgrade complete"
-	}
-	if err := u.cfg.markDeployed(rel, h, desc); err != nil {
-		return rel, err
-	}
-	return rel, u.cfg.prune(name, u.HistoryMax)
+	return rel, nil
 }
 
 // resolveValues applies Helm's upgrade value semantics. It returns the user
@@ -136,17 +133,4 @@ func (u *Upgrade) resolveValues(current *release.Release, userValues map[string]
 		return current.Config, nil
 	}
 	return userValues, nil
-}
-
-func (u *Upgrade) failed(ctx context.Context, rel, current *release.Release, cause error) error {
-	err := u.cfg.markFailed(rel, cause)
-	if !u.Atomic || current.Status != release.StatusDeployed {
-		return err
-	}
-	// Like `helm upgrade --atomic`: roll back to the last deployed revision.
-	rb := &Rollback{cfg: u.cfg, DeployOptions: u.DeployOptions, Version: current.Revision, HistoryMax: u.HistoryMax}
-	if _, rerr := rb.Run(ctx, rel.Name); rerr != nil {
-		return fmt.Errorf("upgrade of %q failed: %w; rollback to revision %d also failed: %v", rel.Name, cause, current.Revision, rerr)
-	}
-	return fmt.Errorf("upgrade of %q failed and was rolled back to revision %d due to atomic being set: %w", rel.Name, current.Revision, cause)
 }

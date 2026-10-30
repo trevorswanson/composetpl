@@ -333,6 +333,13 @@ drive several engines concurrently:
   `DOCKER_HOST` or values for compose's `${VAR}` interpolation.
 - `action.Install.Env` and `action.Upgrade.Env` back the `env` and `expandenv` template functions.
 
+An install or upgrade can also run in two steps, in different processes. `Install.Prepare` and
+`Upgrade.Prepare` render the chart and save the new revision as pending, without running hooks or touching
+containers. `Apply.Run` then deploys that revision, with the same hooks, `--atomic` and history behavior as
+`Run`. A tool that has to recreate its own container can prepare the release itself, and leave the apply to a
+helper container that survives the recreate. If the applying process dies, `Abandon` marks the pending
+revision failed, so the release can be upgraded again.
+
 Until v1 the API may still change between minor versions.
 
 ## Contributing
