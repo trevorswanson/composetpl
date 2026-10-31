@@ -19,27 +19,35 @@ import (
 // fakeVolume emulates the docker commands the Volume driver issues, keeping the
 // "volume" contents in memory, so the driver can be tested without Docker.
 type fakeVolume struct {
-	files   map[string][]byte // path relative to /data
-	calls   []string
-	created bool
+	files    map[string][]byte // path relative to /data
+	calls    []string
+	created  bool
+	accessor bool // whether the accessor container exists
 }
 
-func (f *fakeVolume) exec(_ context.Context, args []string, stdin io.Reader, stdout, _ io.Writer) error {
+func (f *fakeVolume) exec(_ context.Context, args []string, stdin io.Reader, stdout, stderr io.Writer) error {
 	f.calls = append(f.calls, strings.Join(args, " "))
-	for len(args) > 0 && args[0] != "volume" && args[0] != "run" {
+	for len(args) > 0 && args[0] != "volume" && args[0] != "run" && args[0] != "create" && args[0] != "cp" {
 		args = args[1:] // skip global flags such as --context X
 	}
 	switch {
 	case args[0] == "volume" && args[1] == "create":
 		f.created = true
 		return nil
-	case args[0] != "run":
-		return fmt.Errorf("unexpected docker %v", args)
-	}
-	cmd := args[len(args)-1]
-	switch {
-	case contains(args, "-cf"):
+	case args[0] == "create":
+		if f.accessor {
+			fmt.Fprint(stderr, `Conflict. The container name "/composetpl-releases-accessor" is already in use by container "abc".`)
+			return errors.New("exit status 1")
+		}
+		f.accessor = true
+		return nil
+	case args[0] == "cp" && !f.accessor:
+		fmt.Fprint(stderr, "Error response from daemon: No such container: composetpl-releases-accessor")
+		return errors.New("exit status 1")
+	case args[0] == "cp" && args[1] == "composetpl-releases-accessor:/data/." && args[2] == "-":
+		// Like docker cp, the archive starts with the directory itself.
 		tw := tar.NewWriter(stdout)
+		_ = tw.WriteHeader(&tar.Header{Name: "./", Typeflag: tar.TypeDir, Mode: 0o755})
 		names := make([]string, 0, len(f.files))
 		for n := range f.files {
 			names = append(names, n)
@@ -50,7 +58,7 @@ func (f *fakeVolume) exec(_ context.Context, args []string, stdin io.Reader, std
 			_, _ = tw.Write(f.files[n])
 		}
 		return tw.Close()
-	case contains(args, "-xf"):
+	case args[0] == "cp" && args[1] == "-" && args[2] == "composetpl-releases-accessor:/data":
 		tr := tar.NewReader(stdin)
 		for {
 			h, err := tr.Next()
@@ -65,6 +73,10 @@ func (f *fakeVolume) exec(_ context.Context, args []string, stdin io.Reader, std
 				f.files[h.Name] = data
 			}
 		}
+	case args[0] != "run":
+		return fmt.Errorf("unexpected docker %v", args)
+	}
+	switch cmd := args[len(args)-1]; {
 	case strings.HasPrefix(cmd, "rm -f "):
 		for _, p := range strings.Fields(strings.SplitN(cmd, ";", 2)[0])[2:] {
 			delete(f.files, strings.TrimPrefix(p, "/data/"))
@@ -72,15 +84,6 @@ func (f *fakeVolume) exec(_ context.Context, args []string, stdin io.Reader, std
 		return nil
 	}
 	return fmt.Errorf("unexpected helper command %v", args)
-}
-
-func contains(ss []string, s string) bool {
-	for _, x := range ss {
-		if x == s {
-			return true
-		}
-	}
-	return false
 }
 
 func drivers(t *testing.T) map[string]func() Driver {
@@ -185,12 +188,44 @@ func TestVolumeHelperInvocations(t *testing.T) {
 	if _, err := v.List(); err != nil { // cached: no second read
 		t.Fatal(err)
 	}
+	if err := v.Save(rel("media", 1, release.StatusDeployed)); err != nil {
+		t.Fatal(err)
+	}
+	if err := v.Delete(rel("media", 1, release.StatusDeployed)); err != nil {
+		t.Fatal(err)
+	}
 	want := []string{
 		"--context nas volume create --label io.composetpl.storage=v1 composetpl-releases",
-		"--context nas run --rm --network none --pull missing -v composetpl-releases:/data:ro busybox:1.37 tar -C /data -cf - .",
+		"--context nas create --name composetpl-releases-accessor --label io.composetpl.storage=v1 --network none --pull missing -v composetpl-releases:/data busybox:1.37 true",
+		"--context nas cp composetpl-releases-accessor:/data/. -",
+		"--context nas cp - composetpl-releases-accessor:/data",
+		"--context nas run --rm --network none --pull missing -v composetpl-releases:/data busybox:1.37 sh -c rm -f /data/media/v1.json; rmdir /data/media 2>/dev/null; true",
 	}
 	if strings.Join(fv.calls, "\n") != strings.Join(want, "\n") {
 		t.Errorf("calls:\n%s\nwant:\n%s", strings.Join(fv.calls, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestVolumeAccessor checks that an existing accessor is reused and a removed
+// one is recreated.
+func TestVolumeAccessor(t *testing.T) {
+	fv := &fakeVolume{files: map[string][]byte{}, accessor: true}
+	v := NewVolume(nil, "")
+	v.Exec = fv.exec
+	if _, err := v.List(); err != nil {
+		t.Fatalf("an existing accessor should be reused: %v", err)
+	}
+
+	fv.accessor = false // docker container prune
+	fv.calls = nil
+	if err := v.Save(rel("media", 1, release.StatusDeployed)); err != nil {
+		t.Fatalf("a removed accessor should be recreated: %v", err)
+	}
+	if len(fv.calls) != 4 || !strings.HasPrefix(fv.calls[2], "create ") {
+		t.Errorf("calls = %q", fv.calls)
+	}
+	if _, ok := fv.files["media/v1.json"]; !ok {
+		t.Errorf("files = %v", fv.files)
 	}
 }
 

@@ -202,11 +202,18 @@ recreates everything.
 
 `--storage` (or `COMPOSETPL_STORAGE`) picks the driver:
 
-- **`volume` (default):** records live in the Docker volume `composetpl-releases` on the target engine, read
-  and written by a short-lived `busybox` helper container. History travels with the host and is shared by every
-  client pointed at it, like Helm keeping releases in the cluster. `COMPOSETPL_HELPER_IMAGE` and
-  `COMPOSETPL_VOLUME` override the image and the volume name.
+- **`volume` (default):** records live in the Docker volume `composetpl-releases` on the target engine. History
+  travels with the host and is shared by every client pointed at it, like Helm keeping releases in the cluster.
+  `COMPOSETPL_HELPER_IMAGE` and `COMPOSETPL_VOLUME` override the image (`busybox:1.37`) and the volume name.
 - **`local`:** records are JSON files under `$XDG_STATE_HOME/composetpl/<docker context>/`, or `--state-dir`.
+  No containers are involved, but history stays on this machine.
+
+The Docker API can't read or write a volume's files directly, only a container's. So `volume` storage keeps one
+stopped container, `composetpl-releases-accessor`, that mounts the volume, and copies records in and out of it
+with `docker cp`. The container is created once and never started. It shows up in `docker ps -a`; if
+`docker container prune` removes it, the next command recreates it. `docker cp` can't delete files, so removing
+old revisions (`--history-max`, `uninstall`) runs a short-lived helper container from the same image. Reads and
+writes start no container.
 
 Records hold the user-supplied values, which may include secrets. Local files are written `0600`.
 

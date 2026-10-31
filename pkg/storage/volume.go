@@ -18,19 +18,33 @@ import (
 const (
 	// DefaultVolume is the Docker volume that holds release records.
 	DefaultVolume = "composetpl-releases"
-	// DefaultHelperImage runs tar/rm against the volume.
+	// DefaultHelperImage is the image of the accessor container and of the
+	// helper that deletes records.
 	DefaultHelperImage = "busybox:1.37"
-	volumeLabel        = "io.composetpl.storage=v1"
+	// Label marks the volume and its accessor container, with value LabelValue.
+	Label       = "io.composetpl.storage"
+	LabelValue  = "v1"
+	volumeLabel = Label + "=" + LabelValue
 )
 
+// AccessorName is the accessor container of volume.
+func AccessorName(volume string) string { return volume + "-accessor" }
+
 // Volume stores records in a Docker volume on the target engine, so release history
-// travels with the host and is shared by every client that talks to it. Each
-// operation runs a short-lived helper container with no network; reads tar the
-// volume out and writes pipe a tar back in. Records are cached for the process.
+// travels with the host and is shared by every client that talks to it.
+//
+// The Docker API can't read or write a volume's files directly, only a
+// container's (docker cp), and it can do that for a container that was created
+// but never started. So the driver keeps one such accessor container per volume
+// and copies records in and out of it: reads and writes start no container.
+// docker cp can't delete files, so Delete still runs a short-lived helper with
+// no network. Records are cached for the process.
 type Volume struct {
 	// Global are docker-level flags, e.g. --context X.
-	Global      []string
-	VolumeName  string
+	Global     []string
+	VolumeName string
+	// Accessor is the accessor container's name; empty means AccessorName(VolumeName).
+	Accessor    string
 	HelperImage string
 	// Env is added to the environment of every docker call (see compose.CLI.Env).
 	Env []string
@@ -57,6 +71,13 @@ func NewVolume(global []string, helperImage string) *Volume {
 
 func (v *Volume) Name() string { return "volume" }
 
+func (v *Volume) accessor() string {
+	if v.Accessor != "" {
+		return v.Accessor
+	}
+	return AccessorName(v.VolumeName)
+}
+
 func (v *Volume) docker(stdin io.Reader, stdout io.Writer, args ...string) error {
 	var stderr bytes.Buffer
 	full := append(append([]string{}, v.Global...), args...)
@@ -72,15 +93,10 @@ func (v *Volume) docker(stdin io.Reader, stdout io.Writer, args ...string) error
 	return nil
 }
 
-func (v *Volume) helper(rw bool, interactive bool, cmd ...string) []string {
-	mount := v.VolumeName + ":/data"
-	if !rw {
-		mount += ":ro"
-	}
-	args := []string{"run", "--rm", "--network", "none", "--pull", "missing", "-v", mount}
-	if interactive {
-		args = append(args, "-i")
-	}
+// helper is the docker run arguments of a short-lived helper running cmd
+// against the volume.
+func (v *Volume) helper(cmd ...string) []string {
+	args := []string{"run", "--rm", "--network", "none", "--pull", "missing", "-v", v.VolumeName + ":/data"}
 	return append(append(args, v.HelperImage), cmd...)
 }
 
@@ -91,8 +107,36 @@ func (v *Volume) ensure() error {
 	if err := v.docker(nil, io.Discard, "volume", "create", "--label", volumeLabel, v.VolumeName); err != nil {
 		return err
 	}
+	// The accessor only exists to be copied to and from; its command never runs.
+	err := v.docker(nil, io.Discard, "create", "--name", v.accessor(), "--label", volumeLabel,
+		"--network", "none", "--pull", "missing", "-v", v.VolumeName+":/data", v.HelperImage, "true")
+	// A conflict means the accessor exists, made earlier or by another client.
+	if err != nil && !strings.Contains(err.Error(), "is already in use") {
+		return err
+	}
 	v.ensured = true
 	return nil
+}
+
+// copy pipes a tar of the volume to stdout, or with in set, extracts the tar
+// in into the volume. It recreates the accessor once if it's gone (for
+// example after `docker container prune`).
+func (v *Volume) copy(in []byte, stdout io.Writer) error {
+	run := func() error {
+		if in == nil {
+			return v.docker(nil, stdout, "cp", v.accessor()+":/data/.", "-")
+		}
+		return v.docker(bytes.NewReader(in), stdout, "cp", "-", v.accessor()+":/data")
+	}
+	err := run()
+	if err == nil || !strings.Contains(err.Error(), "No such container") {
+		return err
+	}
+	v.ensured = false
+	if err := v.ensure(); err != nil {
+		return err
+	}
+	return run()
 }
 
 func (v *Volume) load() (records, error) {
@@ -103,7 +147,7 @@ func (v *Volume) load() (records, error) {
 		return nil, err
 	}
 	var out bytes.Buffer
-	if err := v.docker(nil, &out, v.helper(false, false, "tar", "-C", "/data", "-cf", "-", ".")...); err != nil {
+	if err := v.copy(nil, &out); err != nil {
 		return nil, err
 	}
 	rs := records{}
@@ -190,7 +234,7 @@ func (v *Volume) Save(rels ...*release.Release) error {
 	if err := tw.Close(); err != nil {
 		return err
 	}
-	if err := v.docker(&buf, io.Discard, v.helper(true, true, "tar", "-C", "/data", "-xf", "-")...); err != nil {
+	if err := v.copy(buf.Bytes(), io.Discard); err != nil {
 		return err
 	}
 	for _, r := range rels {
@@ -222,7 +266,8 @@ func (v *Volume) Delete(rels ...*release.Release) error {
 		script += "; rmdir " + d + " 2>/dev/null"
 	}
 	script += "; true"
-	if err := v.docker(nil, io.Discard, v.helper(true, false, "sh", "-c", script)...); err != nil {
+	// docker cp can't delete, so this is the one operation that starts a container.
+	if err := v.docker(nil, io.Discard, v.helper("sh", "-c", script)...); err != nil {
 		return err
 	}
 	for _, r := range rels {
