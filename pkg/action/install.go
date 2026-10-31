@@ -14,7 +14,10 @@ type Install struct {
 	Strict bool
 	NoEnv  bool
 	// Env backs the env and expandenv template functions; nil reads the process environment.
-	Env         func(key string) (string, bool)
+	Env func(key string) (string, bool)
+	// Lookup backs the lookup function in place of inspecting the engine; it
+	// is not called on DryRun.
+	Lookup      func(kind, name string) (map[string]interface{}, error)
 	Atomic      bool
 	DryRun      bool
 	Description string
@@ -66,7 +69,7 @@ func (i *Install) Prepare(ctx context.Context, name, chartPath string, userValue
 
 	ro, err := i.cfg.liveRenderOptions(ctx, RenderOptions{
 		ChartPath: chartPath, Version: i.ChartVersion, SubchartNotes: i.SubchartNotes, ReleaseName: name, Revision: revision, UserValues: userValues,
-		Strict: i.Strict, NoEnv: i.NoEnv, Env: i.Env,
+		Strict: i.Strict, NoEnv: i.NoEnv, Env: i.Env, Lookup: i.Lookup,
 	}, i.DryRun)
 	if err != nil {
 		return nil, err
