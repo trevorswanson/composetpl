@@ -57,7 +57,7 @@ func (c *Configuration) capabilities(ctx context.Context) (map[string]interface{
 }
 
 // liveRenderOptions fills in engine-backed .Capabilities and, unless dryRun,
-// a lookup function that inspects the engine.
+// a lookup function: o.Lookup if set, else one that inspects the engine.
 func (c *Configuration) liveRenderOptions(ctx context.Context, o RenderOptions, dryRun bool) (RenderOptions, error) {
 	caps, err := c.capabilities(ctx)
 	if err != nil {
@@ -68,7 +68,9 @@ func (c *Configuration) liveRenderOptions(ctx context.Context, o RenderOptions, 
 	if o.Registry == nil {
 		o.Registry = c.Registry
 	}
-	if !dryRun {
+	if dryRun {
+		o.Lookup = nil
+	} else if o.Lookup == nil {
 		o.Lookup = func(kind, name string) (map[string]interface{}, error) {
 			return c.Compose.Inspect(ctx, kind, name)
 		}

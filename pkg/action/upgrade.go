@@ -21,7 +21,10 @@ type Upgrade struct {
 	Strict               bool
 	NoEnv                bool
 	// Env backs the env and expandenv template functions; nil reads the process environment.
-	Env         func(key string) (string, bool)
+	Env func(key string) (string, bool)
+	// Lookup backs the lookup function in place of inspecting the engine; it
+	// is not called on DryRun.
+	Lookup      func(kind, name string) (map[string]interface{}, error)
 	Atomic      bool
 	DryRun      bool
 	Description string
@@ -67,7 +70,7 @@ func (u *Upgrade) Prepare(ctx context.Context, name, chartPath string, userValue
 		if !u.Install {
 			return nil, fmt.Errorf("%q has no deployed releases", name)
 		}
-		in := &Install{cfg: u.cfg, DeployOptions: u.DeployOptions, Strict: u.Strict, NoEnv: u.NoEnv, Env: u.Env,
+		in := &Install{cfg: u.cfg, DeployOptions: u.DeployOptions, Strict: u.Strict, NoEnv: u.NoEnv, Env: u.Env, Lookup: u.Lookup,
 			Atomic: u.Atomic, DryRun: u.DryRun, Description: u.Description, ProjectDir: u.ProjectDir,
 			ChartVersion: u.ChartVersion, SubchartNotes: u.SubchartNotes, Labels: u.Labels}
 		return in.Prepare(ctx, name, chartPath, userValues)
@@ -87,7 +90,7 @@ func (u *Upgrade) Prepare(ctx context.Context, name, chartPath string, userValue
 	config, defaults := u.resolveValues(current, userValues)
 	ro, err := u.cfg.liveRenderOptions(ctx, RenderOptions{
 		ChartPath: chartPath, Version: u.ChartVersion, SubchartNotes: u.SubchartNotes, ReleaseName: name, Revision: latest.Revision + 1, IsUpgrade: true,
-		UserValues: config, Defaults: defaults, Strict: u.Strict, NoEnv: u.NoEnv, Env: u.Env,
+		UserValues: config, Defaults: defaults, Strict: u.Strict, NoEnv: u.NoEnv, Env: u.Env, Lookup: u.Lookup,
 	}, u.DryRun)
 	if err != nil {
 		return nil, err

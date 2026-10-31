@@ -426,3 +426,35 @@ func TestHooksLifecycle(t *testing.T) {
 		t.Errorf("uninstall calls:\n%s\nwant\n%s", e.fake.CallLog(), want)
 	}
 }
+
+func TestLookupOverride(t *testing.T) {
+	e := newEnv(t)
+	tpl := "services:\n  web:\n    image: {{ (lookup \"custom\" \"x\").image | default \"none\" }}\n"
+	must(t, os.WriteFile(filepath.Join(e.chart, "templates/svc.yaml"), []byte(tpl), 0o644))
+	var calls []string
+	lookup := func(kind, name string) (map[string]interface{}, error) {
+		calls = append(calls, kind+"/"+name)
+		return map[string]interface{}{"image": "from-lookup"}, nil
+	}
+
+	i := NewInstall(e.cfg)
+	i.Lookup = lookup
+	rel, err := i.Run(context.Background(), "myapp", e.chart, nil)
+	must(t, err)
+	if !strings.Contains(rel.Manifest, "image: from-lookup") {
+		t.Errorf("install ignored Lookup:\n%s", rel.Manifest)
+	}
+	rel, err = e.upgrade(func(u *Upgrade) { u.Lookup = lookup }, nil)
+	must(t, err)
+	if !strings.Contains(rel.Manifest, "image: from-lookup") {
+		t.Errorf("upgrade ignored Lookup:\n%s", rel.Manifest)
+	}
+	rel, err = e.upgrade(func(u *Upgrade) { u.Lookup, u.DryRun = lookup, true }, nil)
+	must(t, err)
+	if !strings.Contains(rel.Manifest, "image: none") {
+		t.Errorf("dry run should not call Lookup:\n%s", rel.Manifest)
+	}
+	if got := strings.Join(calls, ","); got != "custom/x,custom/x" {
+		t.Errorf("lookup calls = %s", got)
+	}
+}
