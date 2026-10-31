@@ -58,6 +58,7 @@ go build ./cmd/composetpl
 go test ./...                                                     # unit tests (no Docker needed)
 go test ./cmd/composetpl -update                                  # regenerate golden files, then review the diff
 go test -tags integration -run Integration -v ./cmd/composetpl    # real Docker engine
+go test -tags integration -run Integration -v ./pkg/storage       # volume storage only (no compose needed)
 golangci-lint run ./...                                           # lint and formatting
 ```
 

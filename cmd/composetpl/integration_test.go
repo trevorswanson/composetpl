@@ -92,6 +92,8 @@ func TestIntegrationLifecycle(t *testing.T) {
 			t.Setenv("COMPOSETPL_VOLUME", volume)
 			t.Cleanup(func() {
 				_ = exec.Command("docker", "compose", "-p", name, "down", "--remove-orphans", "--volumes").Run()
+				// The accessor holds the volume, so it goes first.
+				_ = exec.Command("docker", "rm", "-f", volume+"-accessor").Run()
 				_ = exec.Command("docker", "volume", "rm", "-f", volume).Run()
 			})
 
