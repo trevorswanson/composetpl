@@ -97,6 +97,7 @@ to stdout (or --output). With --output-dir each template is written to its own f
 				}
 			}
 			output.SetDefaultName(root, f.releaseName(r))
+			output.SetContentHashes(root)
 			doc, err := output.Encode(root)
 			if err != nil {
 				return err

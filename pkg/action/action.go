@@ -233,6 +233,7 @@ func (c *Configuration) releaseFrom(r *Rendered, name string, revision int, conf
 	if prev := output.SetName(root, name); prev != "" && prev != name {
 		c.warnf("the chart sets compose project name %q; using the release name %q instead", prev, name)
 	}
+	output.SetContentHashes(root)
 	manifest, err := output.Encode(root)
 	if err != nil {
 		return nil, err
