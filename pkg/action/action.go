@@ -292,6 +292,30 @@ func (c *Configuration) runHooks(ctx context.Context, rel *release.Release, even
 	return err
 }
 
+// runSyncFail runs rel's sync-fail hooks after a failed install, upgrade or
+// rollback. They run even when ctx is done (a timed-out sync is still a failed
+// one), bounded by timeout, and their own failure is only logged: the sync's
+// error is what the caller reports.
+func (c *Configuration) runSyncFail(ctx context.Context, rel *release.Release, timeout time.Duration, skip bool) {
+	if skip || !hasHook(rel, hooks.SyncFail) {
+		return
+	}
+	if err := c.runHooks(context.WithoutCancel(ctx), rel, hooks.SyncFail, timeout, false); err != nil {
+		c.warnf("%v", err)
+	}
+}
+
+func hasHook(rel *release.Release, event string) bool {
+	for _, h := range rel.Hooks {
+		for _, e := range h.Events {
+			if e == event {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (c *Configuration) up(ctx context.Context, r *release.Release, o DeployOptions) error {
 	if o.Timeout > 0 {
 		var cancel context.CancelFunc

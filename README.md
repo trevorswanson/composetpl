@@ -243,7 +243,10 @@ services:
 ```
 
 - **Events:** `pre-install`, `post-install`, `pre-upgrade`, `post-upgrade`, `pre-rollback`, `post-rollback`,
-  `pre-delete`, `post-delete` and `test`.
+  `pre-delete`, `post-delete`, `sync-fail` and `test`.
+- **`sync-fail`** runs when an install, upgrade or rollback fails, after the revision is marked failed and
+  before `--atomic` recovery, so it can alert or clean up. It runs even when the operation timed out, and its
+  own failure is logged without replacing the operation's error.
 - **Failures:** a hook that still fails after its retries fails the revision, and triggers recovery if
   `--atomic` was given. Each retry replaces the previous attempt's container; delete policies apply to the
   final outcome.
@@ -346,6 +349,11 @@ containers. `Apply.Run` then deploys that revision, with the same hooks, `--atom
 `Run`. A tool that has to recreate its own container can prepare the release itself, and leave the apply to a
 helper container that survives the recreate. If the applying process dies, `Abandon` marks the pending
 revision failed, so the release can be upgraded again.
+
+`Install.PostRender` and `Upgrade.PostRender` rewrite the merged manifest (hooks removed, project name and
+content hashes set) before it is validated, saved and deployed, for example to pin images to digests. They run
+on dry runs too, so `DiffUpgrade` shows what would deploy. Rollbacks redeploy the stored manifest and don't
+call them.
 
 Until v1 the API may still change between minor versions.
 

@@ -48,7 +48,10 @@ const (
 	PostRollback = "post-rollback"
 	PreDelete    = "pre-delete"
 	PostDelete   = "post-delete"
-	Test         = "test"
+	// SyncFail runs when an install, upgrade or rollback fails, before
+	// --atomic recovery.
+	SyncFail = "sync-fail"
+	Test     = "test"
 )
 
 // Delete policies.
@@ -60,7 +63,7 @@ const (
 
 var events = map[string]bool{
 	PreInstall: true, PostInstall: true, PreUpgrade: true, PostUpgrade: true, PreRollback: true,
-	PostRollback: true, PreDelete: true, PostDelete: true, Test: true,
+	PostRollback: true, PreDelete: true, PostDelete: true, SyncFail: true, Test: true,
 }
 
 var policies = map[string]bool{BeforeHookCreation: true, HookSucceeded: true, HookFailed: true}

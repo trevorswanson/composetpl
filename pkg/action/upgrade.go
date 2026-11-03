@@ -35,6 +35,10 @@ type Upgrade struct {
 	SubchartNotes bool
 	// Labels are merged over the current revision's labels; a key set to "" is removed.
 	Labels map[string]string
+	// PostRender rewrites the merged manifest after rendering (hooks removed,
+	// project name and content hashes set) and before it is validated, saved
+	// and deployed. It also runs on DryRun, so a diff shows what would deploy.
+	PostRender func(manifest string) (string, error)
 }
 
 // NewUpgrade returns an Upgrade action with Helm's default history limit.
@@ -72,7 +76,7 @@ func (u *Upgrade) Prepare(ctx context.Context, name, chartPath string, userValue
 		}
 		in := &Install{cfg: u.cfg, DeployOptions: u.DeployOptions, Strict: u.Strict, NoEnv: u.NoEnv, Env: u.Env, Lookup: u.Lookup,
 			Atomic: u.Atomic, DryRun: u.DryRun, Description: u.Description, ProjectDir: u.ProjectDir,
-			ChartVersion: u.ChartVersion, SubchartNotes: u.SubchartNotes, Labels: u.Labels}
+			ChartVersion: u.ChartVersion, SubchartNotes: u.SubchartNotes, Labels: u.Labels, PostRender: u.PostRender}
 		return in.Prepare(ctx, name, chartPath, userValues)
 	}
 	latest := h[len(h)-1]
@@ -101,6 +105,9 @@ func (u *Upgrade) Prepare(ctx context.Context, name, chartPath string, userValue
 	}
 	rel, err := u.cfg.releaseFrom(rendered, name, latest.Revision+1, config, u.ProjectDir)
 	if err != nil {
+		return nil, err
+	}
+	if err := postRender(rel, u.PostRender); err != nil {
 		return nil, err
 	}
 	rel.Status = release.StatusPendingUpgrade
