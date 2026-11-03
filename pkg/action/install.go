@@ -29,6 +29,10 @@ type Install struct {
 	ProjectDir string
 	// Labels are recorded on the release (release.Release.Labels).
 	Labels map[string]string
+	// PostRender rewrites the merged manifest after rendering (hooks removed,
+	// project name and content hashes set) and before it is validated, saved
+	// and deployed. It also runs on DryRun, so a diff shows what would deploy.
+	PostRender func(manifest string) (string, error)
 }
 
 // NewInstall returns an Install action.
@@ -82,6 +86,9 @@ func (i *Install) Prepare(ctx context.Context, name, chartPath string, userValue
 	if err != nil {
 		return nil, err
 	}
+	if err := postRender(rel, i.PostRender); err != nil {
+		return nil, err
+	}
 	rel.Status = release.StatusPendingInstall
 	rel.Labels = release.MergeLabels(nil, i.Labels)
 	if err := i.cfg.Compose.Config(ctx, project(rel)); err != nil {
@@ -101,4 +108,17 @@ func (i *Install) Prepare(ctx context.Context, name, chartPath string, userValue
 // apply is the Apply that deploys what Prepare saved.
 func (i *Install) apply() *Apply {
 	return &Apply{cfg: i.cfg, DeployOptions: i.DeployOptions, Atomic: i.Atomic, Description: i.Description}
+}
+
+// postRender passes rel's manifest through f, if set.
+func postRender(rel *release.Release, f func(string) (string, error)) error {
+	if f == nil {
+		return nil
+	}
+	m, err := f(rel.Manifest)
+	if err != nil {
+		return fmt.Errorf("post-render: %w", err)
+	}
+	rel.Manifest = m
+	return nil
 }

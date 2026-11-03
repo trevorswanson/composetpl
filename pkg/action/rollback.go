@@ -62,16 +62,22 @@ func (r *Rollback) Run(ctx context.Context, name string) (*release.Release, erro
 		return nil, err
 	}
 	if err := r.cfg.runHooks(ctx, &rel, hooks.PreRollback, r.Timeout, r.NoHooks); err != nil {
-		return &rel, r.cfg.markFailed(&rel, err)
+		return &rel, r.failed(ctx, &rel, err)
 	}
 	if err := r.cfg.up(ctx, &rel, r.DeployOptions); err != nil {
-		return &rel, r.cfg.markFailed(&rel, err)
+		return &rel, r.failed(ctx, &rel, err)
 	}
 	if err := r.cfg.runHooks(ctx, &rel, hooks.PostRollback, r.Timeout, r.NoHooks); err != nil {
-		return &rel, r.cfg.markFailed(&rel, err)
+		return &rel, r.failed(ctx, &rel, err)
 	}
 	if err := r.cfg.markDeployed(&rel, h, rel.Description); err != nil {
 		return &rel, err
 	}
 	return &rel, r.cfg.prune(name, r.HistoryMax)
+}
+
+func (r *Rollback) failed(ctx context.Context, rel *release.Release, cause error) error {
+	err := r.cfg.markFailed(rel, cause)
+	r.cfg.runSyncFail(ctx, rel, r.Timeout, r.NoHooks)
+	return err
 }

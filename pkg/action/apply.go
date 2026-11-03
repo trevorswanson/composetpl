@@ -79,6 +79,7 @@ func (a *Apply) apply(ctx context.Context, rel *release.Release, h []*release.Re
 func (a *Apply) failed(ctx context.Context, rel *release.Release, h []*release.Release, cause error) error {
 	install := rel.Status == release.StatusPendingInstall
 	err := a.cfg.markFailed(rel, cause)
+	a.cfg.runSyncFail(ctx, rel, a.Timeout, a.NoHooks)
 	if !a.Atomic {
 		return err
 	}
